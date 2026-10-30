@@ -5,6 +5,12 @@ without a test, listed in status.md under *Next hand-check run*), each ✓ passe
 was seen. When a run fails, the fix gets a new run, on the same day too. Only added to, never rewritten; a
 criterion's newest result counts. How and when to test: test-plan.md.
 
+## 2026-10-30 · run 3 · b146c8d (./x run) on the Mac
+
+| Criterion | Result | Seen                                                                                                          |
+| --------- | :----: | ------------------------------------------------------------------------------------------------------------- |
+| UC-02.8   | ✓      | Run 2's result, under the criterion without input methods (later.md L-4): " and then o gives ö; emoji arrive. |
+
 ## 2026-10-30 · run 2 · b146c8d (./x run) on the Mac
 
 | Criterion | Result | Seen                                                                                                           |
