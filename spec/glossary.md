@@ -10,7 +10,8 @@ Each word has one meaning in the spec and in the app.
 | **Session**             | One Claude Code conversation in a project, running in a terminal; it has an id and can be resumed.                                           |
 | **Agent**               | A subagent a session started, running until it finishes.                                                                                     |
 | **State**               | What a session is doing: *working*, *waiting* (for the person's answer or permission), *idle* (done, ready for the next prompt), or *ended*. |
-| **Terminal**            | A tab or split in Ghostty.                                                                                                                   |
+| **Terminal**            | A shell drawn by Ghostty: in the pane of Yggdrasil's window, or a tab or split of Ghostty's own window.                                      |
+| **Pane**                | The right side of Yggdrasil's window, showing one of its terminals at a time.                                                                |
 | **Sandbox**             | A Docker sandbox (sbx) running Claude for a project, isolated from the Mac.                                                                  |
 | **Earlier session**     | A session of the project that ended; it can be resumed.                                                                                      |
 | **Person (actor)**      | The user at their Mac.                                                                                                                       |

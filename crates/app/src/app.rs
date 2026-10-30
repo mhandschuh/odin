@@ -1,4 +1,5 @@
 use crate::prefs::Prefs;
+use crate::terminal::{self, Cmd};
 use crate::{paths, system, theme, watch::Watch};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, CornerRadius, Rect, Sense, Stroke, vec2};
@@ -10,6 +11,7 @@ use yggdrasil_core::events::{self, Change, Feed, Session, Sessions, State, Wait}
 use yggdrasil_core::ghostty::{self, Failure, Start};
 use yggdrasil_core::history::{self, Earlier};
 use yggdrasil_core::hook;
+use yggdrasil_core::panes::Terms;
 use yggdrasil_core::sbx::Sandbox;
 use yggdrasil_core::tree::{self, At, Node, Tree};
 
@@ -35,6 +37,8 @@ enum Msg {
         wait: Wait,
         ttys: String,
     },
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    QuitAsked,
 }
 
 enum Act {
@@ -45,11 +49,20 @@ enum Act {
     GroupIn(At),
     Move { from: At, into: At, index: usize },
     Open(PathBuf, Start),
+    OpenGhostty(PathBuf, Start),
+    Show(u64),
+    Close(u64),
     Focus(String),
     Earlier(PathBuf),
     SandboxSessions(PathBuf, bool),
     AddProject,
     NewGroup,
+}
+
+/// What can't be undone, asked first (UC-02.11, UC-02.12).
+enum Confirm {
+    Close(u64),
+    Quit(usize),
 }
 
 struct Message {
@@ -80,6 +93,19 @@ pub struct App {
     exits: Option<crate::mac::Exits>,
     watched_pids: HashSet<u32>,
     checked_pids: Instant,
+    /// The terminals of the pane (ADR 0005).
+    terms: Terms,
+    /// Which pane terminal each running session is in.
+    in_term: HashMap<String, u64>,
+    /// The pane terminals in the tree's order, for ⌘1 to ⌘9.
+    order: Vec<u64>,
+    /// Gets the keys once it's shown.
+    focus_term: Option<u64>,
+    confirm: Option<Confirm>,
+    window_focused: bool,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    quit_hooked: bool,
+    home_failed: bool,
 }
 
 impl App {
@@ -129,6 +155,14 @@ impl App {
             exits,
             watched_pids: HashSet::new(),
             checked_pids: Instant::now(),
+            terms: Terms::default(),
+            in_term: HashMap::new(),
+            order: Vec::new(),
+            focus_term: None,
+            confirm: None,
+            window_focused: true,
+            quit_hooked: false,
+            home_failed: false,
         };
         for f in app.event_files() {
             events::compact(&f);
@@ -227,6 +261,11 @@ impl App {
     /// Whether the waiting session's terminal is Ghostty's front tab decides about the notification (UC-04.2).
     fn check_front(&self, session: String, wait: Wait) {
         let tx = self.tx.clone();
+        if self.in_term.contains_key(&session) {
+            // In the pane: whether it's in front is known here (Msg::Front).
+            let _ = tx.send(Msg::Front { session, wait, ttys: String::new() });
+            return;
+        }
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
             let ttys = system::osascript(&ghostty::front_ttys()).unwrap_or_default();
@@ -276,10 +315,16 @@ impl App {
                 Err(f) => self.failed(f),
             },
             Msg::Clicked(session) => self.focus(&session),
+            Msg::QuitAsked => self.quit_asked(),
             Msg::Front { session, wait, ttys } => {
                 let Some(s) = self.sessions.running.get(&session) else { return };
-                let in_front = !s.tty.is_empty()
-                    && ttys.lines().any(|t| ghostty::normal_tty(t) == ghostty::normal_tty(&s.tty));
+                let in_front = match self.in_term.get(&session) {
+                    Some(t) => self.window_focused && self.terms.shown() == Some(*t),
+                    None => {
+                        !s.tty.is_empty()
+                            && ttys.lines().any(|t| ghostty::normal_tty(t) == ghostty::normal_tty(&s.tty))
+                    }
+                };
                 let change = Change::StartedWaiting(session.clone(), wait);
                 if events::notify(&change, self.prefs.notifications, in_front) {
                     let title = format!("{} waits", self.project_name(&s.cwd));
@@ -312,7 +357,127 @@ impl App {
         });
     }
 
+    /// Opens in the pane; where there's none (off the Mac, or Ghostty's library didn't start), in Ghostty's window.
     fn open(&mut self, project: PathBuf, start: Start) {
+        if terminal::failed().is_some() {
+            return self.open_ghostty(project, start);
+        }
+        if start == Start::Sandbox && !self.sandbox_projects().contains(&project) {
+            self.set_sandbox_sessions(&project, true);
+        }
+        self.open_term(Some(project), start);
+    }
+
+    fn open_term(&mut self, project: Option<PathBuf>, start: Start) {
+        let folder = project.clone().or_else(dirs::home_dir).unwrap_or_default();
+        let id = self.terms.open(project, start.clone());
+        match terminal::open(id, &folder, start.input().as_deref()) {
+            Ok(()) => {
+                self.focus_term = Some(id);
+                self.ctx.request_repaint();
+            }
+            Err(e) => {
+                self.terms.close(id);
+                self.message = Some(Message { title: "No terminal".into(), body: e, automation: false });
+            }
+        }
+    }
+
+    /// The shown terminal and what runs in it end; a running program is asked about first.
+    fn close_term(&mut self, id: u64, asked: bool) {
+        if !asked && terminal::needs_confirm(id) {
+            self.confirm = Some(Confirm::Close(id));
+            return;
+        }
+        terminal::close(id);
+        self.terms.close(id);
+        if let Some(next) = self.terms.shown() {
+            self.focus_term = Some(next);
+        }
+    }
+
+    fn show_term(&mut self, id: u64) {
+        self.terms.show(id);
+        self.focus_term = Some(id);
+    }
+
+    fn quit_asked(&mut self) {
+        let running = self.terms.list.iter().filter(|t| terminal::needs_confirm(t.id)).count();
+        if running == 0 {
+            self.quit();
+        } else {
+            self.confirm = Some(Confirm::Quit(running));
+        }
+    }
+
+    fn quit(&mut self) {
+        #[cfg(target_os = "macos")]
+        crate::mac::terminate();
+        #[cfg(not(target_os = "macos"))]
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    /// What the keys of the pane ask (UC-02.11): from the terminal or from the tree.
+    fn command(&mut self, cmd: Cmd) {
+        match cmd {
+            Cmd::New => {
+                let project = self.terms.shown().and_then(|id| self.terms.get(id)).and_then(|t| t.project.clone());
+                if let Some(p) = project {
+                    self.open_term(Some(p), Start::Terminal);
+                }
+            }
+            Cmd::Close => {
+                if let Some(id) = self.terms.shown() {
+                    self.close_term(id, false);
+                }
+            }
+            Cmd::Goto(n) => {
+                if let Some(&id) = self.order.get(n - 1) {
+                    self.show_term(id);
+                }
+            }
+            Cmd::Settings => self.settings_open = true,
+        }
+    }
+
+    /// Follows the pane's terminals: ended shells close, devices become known, sessions are matched to them.
+    fn follow_terms(&mut self) {
+        for id in terminal::take_ended() {
+            terminal::close(id);
+            self.terms.close(id);
+            if let Some(next) = self.terms.shown() {
+                self.focus_term = Some(next);
+            }
+        }
+        for t in self.terms.list.iter_mut().filter(|t| t.tty.is_empty()) {
+            t.tty = terminal::tty(t.id);
+        }
+        // With no terminal open, the pane shows a shell in the home folder (UC-02.7).
+        if self.terms.shown().is_none() && terminal::failed().is_none() && !self.home_failed {
+            self.open_term(None, Start::Terminal);
+            // Not again every frame: the message says why.
+            self.home_failed = self.terms.shown().is_none();
+            if terminal::failed().is_some() {
+                self.message = None;
+            }
+        }
+        let mut by_project: HashMap<Option<PathBuf>, Vec<&Session>> = HashMap::new();
+        for s in self.sessions.running.values() {
+            by_project.entry(self.tree.project_of(&s.cwd)).or_default().push(s);
+        }
+        self.in_term = self
+            .sessions
+            .running
+            .values()
+            .filter_map(|s| {
+                let project = self.tree.project_of(&s.cwd);
+                let same = by_project.get(&project).map(Vec::as_slice).unwrap_or_default();
+                self.terms.of_session(s, project.as_deref(), same).map(|t| (s.id.clone(), t))
+            })
+            .collect();
+    }
+
+    fn open_ghostty(&mut self, project: PathBuf, start: Start) {
         if start == Start::Sandbox && !self.sandbox_projects().contains(&project) {
             // Sandbox sessions only show when the project reports them (UC-05.3).
             self.set_sandbox_sessions(&project, true);
@@ -326,7 +491,11 @@ impl App {
         });
     }
 
-    fn focus(&self, session: &str) {
+    fn focus(&mut self, session: &str) {
+        if let Some(&t) = self.in_term.get(session) {
+            self.show_term(t);
+            return;
+        }
         let Some(s) = self.sessions.running.get(session) else { return };
         let id = self
             .tree
@@ -418,6 +587,9 @@ impl App {
                 self.save_tree();
             }
             Act::Open(p, s) => self.open(p, s),
+            Act::OpenGhostty(p, s) => self.open_ghostty(p, s),
+            Act::Show(id) => self.show_term(id),
+            Act::Close(id) => self.close_term(id, false),
             Act::Focus(id) => self.focus(&id),
             Act::Earlier(p) => {
                 if !self.earlier_open.remove(&p) {
@@ -483,11 +655,61 @@ fn drop_line(ui: &egui::Ui, rect: Rect, depth: usize, top: bool) {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = &ui.ctx().clone();
+        terminal::attach(frame, ctx);
+        #[cfg(target_os = "macos")]
+        if !self.quit_hooked {
+            let (tx, c) = (self.tx.clone(), ctx.clone());
+            self.quit_hooked = crate::mac::ask_before_quit(move || {
+                let _ = tx.send(Msg::QuitAsked);
+                c.request_repaint();
+            });
+        }
         while let Ok(msg) = self.rx.try_recv() {
             self.handle(msg);
         }
+        for cmd in terminal::take_cmds() {
+            self.command(cmd);
+        }
+        self.follow_terms();
         self.watch_files();
         let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        self.window_focused = focused;
+        // Closing the window quits; with programs running in the pane, after asking (UC-02.12).
+        if ctx.input(|i| i.viewport().close_requested())
+            && self.terms.list.iter().any(|t| terminal::needs_confirm(t.id))
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.quit_asked();
+        }
+        // The pane's keys while the tree has them; while a terminal has them, its view hands them over (Cmd).
+        let keys = ctx.input(|i| {
+            if !i.modifiers.command || i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl {
+                return None;
+            }
+            let digits = [
+                egui::Key::Num1,
+                egui::Key::Num2,
+                egui::Key::Num3,
+                egui::Key::Num4,
+                egui::Key::Num5,
+                egui::Key::Num6,
+                egui::Key::Num7,
+                egui::Key::Num8,
+                egui::Key::Num9,
+            ];
+            if i.key_pressed(egui::Key::T) {
+                Some(Cmd::New)
+            } else if i.key_pressed(egui::Key::W) {
+                Some(Cmd::Close)
+            } else {
+                digits.iter().position(|k| i.key_pressed(*k)).map(|n| Cmd::Goto(n + 1))
+            }
+        });
+        if let Some(cmd) = keys
+            && self.renaming.is_none()
+        {
+            self.command(cmd);
+        }
         // Without the Mac's exit reports (a development build on Linux), ended processes are checked every 2 s.
         if cfg!(not(target_os = "macos")) && self.sessions.running.values().any(|s| s.pid != 0) {
             if self.checked_pids.elapsed() > Duration::from_secs(2) {
@@ -521,10 +743,10 @@ impl eframe::App for App {
         let p = theme::current(ctx);
         // A click into the tree takes the keys back from the terminal pane (UC-02.7); clicks into the pane don't reach
         // egui, the pane's own view takes them.
-        #[cfg(target_os = "macos")]
         if ctx.input(|i| i.pointer.any_pressed()) {
-            crate::terminal::release_focus();
+            terminal::release_focus();
         }
+        self.order.clear();
         egui::Panel::left("tree")
             .resizable(true)
             .default_size(320.0)
@@ -590,24 +812,24 @@ impl eframe::App for App {
                 }
             });
         });
+        // egui's dialogs would be under the terminal: while one is open, the terminal steps aside.
+        let dialog = self.settings_open || self.message.is_some() || self.confirm.is_some();
         egui::CentralPanel::default().frame(egui::Frame::new().fill(Color32::from_rgb(24, 24, 26))).show(ui, |ui| {
             let rect = ui.max_rect();
-            #[cfg(target_os = "macos")]
-            let shown = crate::terminal::show(frame, ctx, rect, &dirs::home_dir().unwrap_or_default());
-            #[cfg(not(target_os = "macos"))]
-            let shown: Result<(), String> = {
-                let _ = frame;
-                Err("The terminal pane is drawn by Ghostty, on the Mac.".into())
-            };
-            if let Err(e) = shown {
+            terminal::layout(self.terms.shown(), rect, !dialog);
+            if let Some(e) = terminal::failed() {
                 ui.painter().text(rect.center(), Align2::CENTER_CENTER, e, theme::font(13.0), p.tertiary);
             }
         });
+        if !dialog && let Some(id) = self.focus_term.take() {
+            terminal::focus(id);
+        }
         for a in acts {
             self.apply(a);
         }
         self.settings(ctx);
         self.message(ctx);
+        self.confirm(ctx);
     }
 }
 
@@ -744,16 +966,30 @@ impl App {
                 }
             }
         }
+        let starts = [
+            ("Open Terminal", Start::Terminal),
+            ("Start Claude", Start::Claude),
+            ("Start Claude in a Sandbox", Start::Sandbox),
+        ];
         resp.context_menu(|ui| {
-            for (t, s) in [
-                ("Open Terminal", Start::Terminal),
-                ("Start Claude", Start::Claude),
-                ("Start Claude in a Sandbox", Start::Sandbox),
-            ] {
+            for (t, s) in starts.clone() {
                 if ui.add_enabled(!missing, egui::Button::new(t)).clicked() {
                     acts.push(Act::Open(path.to_path_buf(), s));
                     ui.close();
                 }
+            }
+            // Ghostty's own window, as before the pane (UC-02.9).
+            if terminal::failed().is_none() {
+                ui.add_enabled_ui(!missing, |ui| {
+                    ui.menu_button("Open in Ghostty", |ui| {
+                        for (t, s) in starts.clone() {
+                            if ui.button(t).clicked() {
+                                acts.push(Act::OpenGhostty(path.to_path_buf(), s));
+                                ui.close();
+                            }
+                        }
+                    });
+                });
             }
             ui.separator();
             let mut on = sandbox;
@@ -781,6 +1017,18 @@ impl App {
         for s in &mine {
             self.session_row(ui, depth + 1, s, acts);
         }
+        // The pane's terminals of this project that no session runs in (UC-02.1).
+        let used: HashSet<u64> = self.in_term.values().copied().collect();
+        let plain: Vec<u64> = self
+            .terms
+            .list
+            .iter()
+            .filter(|t| t.project.as_deref() == Some(path) && !used.contains(&t.id))
+            .map(|t| t.id)
+            .collect();
+        for id in plain {
+            self.term_row(ui, depth + 1, id, acts);
+        }
         if open {
             let list = self.earlier(path);
             if list.is_empty() && mine.is_empty() {
@@ -792,7 +1040,7 @@ impl App {
                 let (rect, resp) = row(ui, depth + 1, egui::Id::new(("earlier", &e.id)));
                 let text = format!("{}  ·  {}", short(&e.id), history::ago(e.last, now));
                 label(ui, rect, depth + 1, icon::CLOCK_COUNTER_CLOCKWISE, p.tertiary, &text, p.secondary);
-                let resp = resp.on_hover_text("Resume in Ghostty");
+                let resp = resp.on_hover_text("Resume");
                 if resp.clicked() {
                     acts.push(Act::Open(path.to_path_buf(), Start::Resume(e.id.clone())));
                 }
@@ -803,6 +1051,13 @@ impl App {
     fn session_row(&mut self, ui: &mut egui::Ui, depth: usize, s: &Session, acts: &mut Vec<Act>) {
         let p = theme::current(ui.ctx());
         let (rect, resp) = row(ui, depth, egui::Id::new(("session", &s.id)));
+        let term = self.in_term.get(&s.id).copied();
+        if let Some(t) = term {
+            self.order.push(t);
+            if self.terms.shown() == Some(t) {
+                ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
+            }
+        }
         let color = match s.state {
             State::Working => p.accent,
             State::Waiting => WAITING,
@@ -827,12 +1082,86 @@ impl App {
         if s.state == State::Working {
             ui.ctx().request_repaint_after(Duration::from_secs(1));
         }
-        if resp.on_hover_text("Bring its terminal to the front").clicked() {
+        let tip = if term.is_some() { "Show its terminal" } else { "Bring its terminal to the front" };
+        let resp = resp.on_hover_text(tip);
+        if resp.clicked() {
             acts.push(Act::Focus(s.id.clone()));
+        }
+        if let Some(t) = term {
+            resp.context_menu(|ui| {
+                if ui.button("Close Terminal").clicked() {
+                    acts.push(Act::Close(t));
+                    ui.close();
+                }
+            });
         }
         for kind in s.agents.values() {
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW - 4.0), Sense::hover());
             label(ui, rect, depth + 1, icon::ROBOT, p.secondary, kind, p.secondary);
+        }
+    }
+
+    /// A terminal of the pane without a session in it.
+    fn term_row(&mut self, ui: &mut egui::Ui, depth: usize, id: u64, acts: &mut Vec<Act>) {
+        let p = theme::current(ui.ctx());
+        let (rect, resp) = row(ui, depth, egui::Id::new(("term", id)));
+        self.order.push(id);
+        if self.terms.shown() == Some(id) {
+            ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
+        }
+        label(ui, rect, depth, icon::TERMINAL_WINDOW, p.secondary, "Terminal", p.text);
+        let resp = resp.on_hover_text("Show it");
+        if resp.clicked() {
+            acts.push(Act::Show(id));
+        }
+        resp.context_menu(|ui| {
+            if ui.button("Close Terminal").clicked() {
+                acts.push(Act::Close(id));
+                ui.close();
+            }
+        });
+    }
+
+    fn confirm(&mut self, ctx: &egui::Context) {
+        let Some(c) = &self.confirm else { return };
+        let (title, body, button) = match c {
+            Confirm::Close(_) => (
+                "Close this terminal?".to_string(),
+                "A program still runs in it. Closing the terminal ends it.".to_string(),
+                "Close",
+            ),
+            Confirm::Quit(n) => (
+                "Quit Yggdrasil?".to_string(),
+                format!(
+                    "{} still {} a program. Quitting ends {}; Claude sessions can be continued later with Resume.",
+                    if *n == 1 { "A terminal".to_string() } else { format!("{n} terminals") },
+                    if *n == 1 { "runs" } else { "run" },
+                    if *n == 1 { "it" } else { "them" },
+                ),
+                "Quit",
+            ),
+        };
+        let (mut yes, mut no) = (false, ctx.input(|i| i.key_pressed(egui::Key::Escape)));
+        egui::Window::new(title).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(
+            ctx,
+            |ui| {
+                ui.set_max_width(320.0);
+                ui.label(body);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    no |= ui.button("Cancel").clicked();
+                    yes |= ui.button(button).clicked();
+                });
+            },
+        );
+        if yes {
+            match self.confirm.take() {
+                Some(Confirm::Close(id)) => self.close_term(id, true),
+                Some(Confirm::Quit(_)) => self.quit(),
+                None => {}
+            }
+        } else if no {
+            self.confirm = None;
         }
     }
 

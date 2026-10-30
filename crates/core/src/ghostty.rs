@@ -120,7 +120,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn uc_02_1_a_terminal_opens_in_the_projects_folder() {
+    fn uc_02_9_a_ghostty_tab_opens_in_the_projects_folder() {
         let s = open(Path::new("/Users/alice/code/vesta"), &Start::Terminal);
         assert!(s.contains(r#"{initial working directory:"/Users/alice/code/vesta"}"#), "{s}");
         assert!(!s.contains("initial input"));
@@ -128,14 +128,26 @@ mod tests {
     }
 
     #[test]
-    fn uc_02_2_claude_starts_in_the_tab() {
+    fn uc_02_9_claude_starts_in_the_ghostty_tab() {
         let s = open(Path::new("/code/vesta"), &Start::Claude);
         assert!(s.contains(r#"initial input:"claude" & linefeed"#), "{s}");
     }
 
     #[test]
-    fn uc_02_3_claude_starts_in_a_sandbox_of_the_project() {
+    fn uc_02_9_claude_starts_in_a_sandbox_in_the_ghostty_tab() {
         assert!(open(Path::new("/code/vesta"), &Start::Sandbox).contains(r#"initial input:"sbx run claude""#));
+    }
+
+    /// What the pane's new terminal types into its shell once it runs (the app adds the Return).
+    #[test]
+    fn uc_02_2_claude_is_started_in_the_new_terminal() {
+        assert_eq!(Start::Claude.input().as_deref(), Some("claude"));
+        assert_eq!(Start::Terminal.input(), None);
+    }
+
+    #[test]
+    fn uc_02_3_claude_is_started_in_a_sandbox_of_the_project() {
+        assert_eq!(Start::Sandbox.input().as_deref(), Some("sbx run claude"));
     }
 
     #[test]

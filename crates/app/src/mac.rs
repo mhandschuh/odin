@@ -1,8 +1,9 @@
 //! The macOS parts: notifications that bring a session's terminal to the front when clicked (UC-04), and the exits
-//! of Claude processes as they happen (UC-03.4), without checking repeatedly.
+//! of Claude processes as they happen (UC-03.4), without checking repeatedly, and Quit that asks first (UC-02.12).
 use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
-use objc2::{AnyThread, define_class, msg_send};
+use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::{AnyThread, MainThreadMarker, define_class, msg_send, sel};
+use objc2_app_kit::NSApplication;
 use objc2_foundation::{NSBundle, NSObject, NSObjectProtocol, NSString};
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification, UNNotificationPresentationOptions,
@@ -116,5 +117,51 @@ impl Exits {
             udata: std::ptr::null_mut(),
         };
         unsafe { libc::kevent(self.kq, &ev, 1, std::ptr::null_mut(), 0, std::ptr::null()) };
+    }
+}
+
+static QUIT_ASKED: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
+
+define_class!(
+    #[unsafe(super = NSObject)]
+    #[name = "YggdrasilQuitTarget"]
+    struct QuitTarget;
+
+    impl QuitTarget {
+        #[unsafe(method(quitAsked:))]
+        fn quit_asked(&self, _sender: Option<&AnyObject>) {
+            if let Some(f) = QUIT_ASKED.get() {
+                f();
+            }
+        }
+    }
+);
+
+/// The app menu's Quit (⌘Q) asks Yggdrasil first, so it can say which terminals would end (UC-02.12). True once the
+/// menu was there to change; until then Quit quits at once.
+pub fn ask_before_quit(asked: impl Fn() + Send + Sync + 'static) -> bool {
+    let Some(mtm) = MainThreadMarker::new() else { return false };
+    let Some(menu) = NSApplication::sharedApplication(mtm).mainMenu() else { return false };
+    let quit = menu
+        .itemArray()
+        .iter()
+        .filter_map(|i| i.submenu())
+        .flat_map(|m| m.itemArray().iter().collect::<Vec<_>>())
+        .find(|i| i.action() == Some(sel!(terminate:)));
+    let Some(quit) = quit else { return false };
+    let _ = QUIT_ASKED.set(Box::new(asked));
+    let target: Retained<QuitTarget> = unsafe { msg_send![QuitTarget::alloc(), init] };
+    unsafe {
+        quit.setTarget(Some(&target));
+        quit.setAction(Some(sel!(quitAsked:)));
+    }
+    // The menu item doesn't keep its target: it lives as long as the app.
+    std::mem::forget(target);
+    true
+}
+
+pub fn terminate() {
+    if let Some(mtm) = MainThreadMarker::new() {
+        NSApplication::sharedApplication(mtm).terminate(None);
     }
 }

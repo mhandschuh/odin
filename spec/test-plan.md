@@ -50,12 +50,15 @@ them too, and they are met only when the test passes and the newest hand check p
 | Criterion | Seen only on the device                            |
 | --------- | -------------------------------------------------- |
 | UC-01.3   | dragging in the tree                               |
-| UC-02.1   | the Ghostty tab in the right folder                |
-| UC-02.2   | Claude started in the tab                          |
+| UC-02.1   | the terminal in the right folder, in the tree      |
+| UC-02.2   | Claude started in the terminal                     |
 | UC-02.3   | Claude started in a sandbox                        |
 | UC-02.4   | the session continued                              |
 | UC-02.7   | the terminal pane drawn by Ghostty, and typed into |
 | UC-02.8   | dead keys and emoji in the terminal pane           |
+| UC-02.9   | the Ghostty tab in the right folder                |
+| UC-02.10  | a real shell ending                                |
+| UC-03.7   | the terminal shown or brought to the front         |
 | UC-03.1   | the state of a real session                        |
 | UC-03.2   | a real permission request                          |
 | UC-03.3   | a real subagent                                    |

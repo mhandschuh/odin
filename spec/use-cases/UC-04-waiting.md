@@ -29,6 +29,6 @@ The person knows within a few seconds that a session waits, and gets to it with 
 
 ## Acceptance criteria
 
-- **UC-04.1** Given a working session of *vesta* in a tab that isn't in front, when Claude asks for a permission, then within 2 seconds a notification says that *vesta*'s session waits for a permission; clicking the notification brings the session's tab to the front.
-- **UC-04.2** Given a session whose Ghostty tab is in front, when it starts waiting, then no notification comes.
+- **UC-04.1** Given a working session of *vesta* in a terminal that isn't in front, when Claude asks for a permission, then within 2 seconds a notification says that *vesta*'s session waits for a permission; clicking the notification brings the session's terminal to the front.
+- **UC-04.2** Given a session whose terminal is in front (shown in the pane of Yggdrasil's window in front, or its Ghostty tab in front), when it starts waiting, then no notification comes.
 - **UC-04.3** Given notifications turned off in Yggdrasil's settings, when a session starts waiting, then no notification comes, and the tree still shows it as *waiting*.

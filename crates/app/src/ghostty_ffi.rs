@@ -101,6 +101,13 @@ pub struct Action {
 }
 
 #[repr(C)]
+pub struct GhosttyString {
+    pub ptr: *const c_char,
+    pub len: usize,
+    pub sentinel: bool,
+}
+
+#[repr(C)]
 pub struct ClipboardContent {
     pub mime: *const c_char,
     pub data: *const c_char,
@@ -144,6 +151,9 @@ unsafe extern "C" {
     pub fn ghostty_surface_config_new() -> SurfaceConfig;
     pub fn ghostty_surface_new(app: App, config: *const SurfaceConfig) -> Surface;
     pub fn ghostty_surface_free(surface: Surface);
+    pub fn ghostty_surface_tty_name(surface: Surface) -> GhosttyString;
+    pub fn ghostty_string_free(s: GhosttyString);
+    pub fn ghostty_surface_needs_confirm_quit(surface: Surface) -> bool;
     pub fn ghostty_surface_refresh(surface: Surface);
     pub fn ghostty_surface_set_content_scale(surface: Surface, x: f64, y: f64);
     pub fn ghostty_surface_set_focus(surface: Surface, focused: bool);
@@ -180,6 +190,7 @@ mod tests {
         assert_eq!(size_of::<ClipboardContent>(), 24);
         assert_eq!(size_of::<ClipboardComplete>(), 40);
         assert_eq!(size_of::<EnvVar>(), 16);
+        assert_eq!(size_of::<GhosttyString>(), 24);
         assert_eq!(
             [
                 offset_of!(InputKey, keycode),

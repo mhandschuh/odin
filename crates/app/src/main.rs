@@ -7,12 +7,25 @@ mod prefs;
 mod system;
 #[cfg(target_os = "macos")]
 mod terminal;
+#[cfg(not(target_os = "macos"))]
+#[path = "terminal_stub.rs"]
+mod terminal;
 mod theme;
 mod watch;
 
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // Ghostty's shell integration and terminfo come from its resources: those of the installed Ghostty (the same
+    // version), so the pane's shells know their prompt and Ghostty can tell when a program runs (ADR 0005).
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("GHOSTTY_RESOURCES_DIR").is_none() {
+        let dir = std::path::Path::new("/Applications/Ghostty.app/Contents/Resources/ghostty");
+        if dir.is_dir() {
+            // Nothing else runs yet that reads the environment.
+            unsafe { std::env::set_var("GHOSTTY_RESOURCES_DIR", dir) };
+        }
+    }
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Yggdrasil")
         .with_app_id("yggdrasil")

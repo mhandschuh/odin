@@ -1,5 +1,6 @@
-//! The terminal pane (UC-02.7, ADR 0004): a view of our own over the right part of the window, which libghostty
-//! draws into with the person's Ghostty config; keys, text, mouse and scrolling go to it while it has the focus.
+//! The terminals of the pane (UC-02, ADR 0004, ADR 0005): each a view of our own over the right part of the window,
+//! which libghostty draws into with the person's Ghostty config; keys, text, mouse and scrolling go to the shown one
+//! while it has the focus. Which one shows is the core's `panes::Terms`; here they are only drawn.
 use crate::ghostty_ffi as g;
 use eframe::egui;
 use objc2::rc::Retained;
@@ -18,31 +19,39 @@ use std::ffi::{CString, c_char, c_int, c_void};
 use std::sync::OnceLock;
 
 static CTX: OnceLock<egui::Context> = OnceLock::new();
+/// Ghostty's app: started once, with the person's config; an error says why it didn't.
+static APP: OnceLock<Result<usize, String>> = OnceLock::new();
 
 struct Pane {
-    app: g::App,
+    id: u64,
     surface: g::Surface,
     view: Retained<TermView>,
-    parent: Retained<NSView>,
     size: (u32, u32),
-    ended: bool,
+}
+
+/// What a key in a terminal asks of Yggdrasil rather than of its shell (UC-02.11).
+pub enum Cmd {
+    New,
+    Close,
+    Goto(usize),
+    Settings,
 }
 
 thread_local! {
-    static PANE: RefCell<Option<Pane>> = const { RefCell::new(None) };
-    static FAILED: RefCell<Option<String>> = const { RefCell::new(None) };
-}
-
-fn surface() -> Option<g::Surface> {
-    PANE.with(|p| p.borrow().as_ref().filter(|p| !p.ended).map(|p| p.surface))
-}
-
-thread_local! {
+    static PANES: RefCell<Vec<Pane>> = const { RefCell::new(Vec::new()) };
+    static PARENT: RefCell<Option<Retained<NSView>>> = const { RefCell::new(None) };
+    static CMDS: RefCell<Vec<Cmd>> = const { RefCell::new(Vec::new()) };
+    /// Terminals whose shell ended (exit): Ghostty asks to close them.
+    static ENDED: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
     /// Text an input method is still composing (a dead key's accent, a reading before its kanji): shown at the cursor,
     /// not yet typed.
     static MARKED: RefCell<String> = const { RefCell::new(String::new()) };
     /// While macOS interprets a key: the text it produced, sent to Ghostty with that key.
     static TYPED: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+fn surface_of(id: u64) -> Option<g::Surface> {
+    PANES.with(|p| p.borrow().iter().find(|p| p.id == id).map(|p| p.surface))
 }
 
 // The device-dependent bits of the modifier flags that tell the right-hand keys apart (IOKit's NX_DEVICE…KEYMASK).
@@ -137,10 +146,10 @@ fn sync_preedit(s: g::Surface, clear: bool) {
 }
 
 /// The composing is over: what's shown at the cursor goes.
-fn unmark() {
+fn unmark(s: Option<g::Surface>) {
     if has_marked() {
         MARKED.with(|m| m.borrow_mut().clear());
-        if let Some(s) = surface() {
+        if let Some(s) = s {
             sync_preedit(s, true);
         }
     }
@@ -176,7 +185,7 @@ define_class!(
 
         #[unsafe(method(becomeFirstResponder))]
         fn become_first_responder(&self) -> bool {
-            if let Some(s) = surface() {
+            if let Some(s) = self.surface() {
                 unsafe { g::ghostty_surface_set_focus(s, true) };
             }
             true
@@ -184,7 +193,7 @@ define_class!(
 
         #[unsafe(method(resignFirstResponder))]
         fn resign_first_responder(&self) -> bool {
-            if let Some(s) = surface() {
+            if let Some(s) = self.surface() {
                 unsafe { g::ghostty_surface_set_focus(s, false) };
             }
             true
@@ -194,7 +203,7 @@ define_class!(
         // International) and input methods compose their text; the key goes to Ghostty with what it typed.
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
-            let Some(s) = surface() else { return };
+            let Some(s) = self.surface() else { return };
             let flags = event.modifierFlags();
             let m = mods(flags);
             // With Ghostty's macos-option-as-alt, Option is Alt: the text is taken as if it weren't held.
@@ -222,7 +231,7 @@ define_class!(
 
         #[unsafe(method(keyUp:))]
         fn key_up(&self, event: &NSEvent) {
-            if let Some(s) = surface() {
+            if let Some(s) = self.surface() {
                 send(s, event, g::ACTION_RELEASE, mods(event.modifierFlags()), 0, None, false);
             }
         }
@@ -230,7 +239,7 @@ define_class!(
         // Modifier keys on their own (Ghostty's keybindings and programs that see Shift or Ctrl alone).
         #[unsafe(method(flagsChanged:))]
         fn flags_changed(&self, event: &NSEvent) {
-            let Some(s) = surface() else { return };
+            let Some(s) = self.surface() else { return };
             let (bit, right) = match event.keyCode() {
                 0x39 => (g::MODS_CAPS, None),
                 0x38 => (g::MODS_SHIFT, None),
@@ -268,8 +277,29 @@ define_class!(
         fn perform_key_equivalent(&self, event: &NSEvent) -> objc2::runtime::Bool {
             let first: Option<Retained<NSResponder>> = self.window().and_then(|w| w.firstResponder());
             let me: &NSResponder = self;
-            let Some(s) = surface() else { return objc2::runtime::Bool::NO };
-            if first.is_some_and(|f| std::ptr::eq(&*f, me)) && event.modifierFlags().contains(NSEventModifierFlags::Command) {
+            let Some(s) = self.surface() else { return objc2::runtime::Bool::NO };
+            let flags = event.modifierFlags();
+            let held = flags & (NSEventModifierFlags::Shift
+                | NSEventModifierFlags::Control
+                | NSEventModifierFlags::Option
+                | NSEventModifierFlags::Command);
+            if first.as_ref().is_some_and(|f| std::ptr::eq(&**f, me)) && held == NSEventModifierFlags::Command {
+                // Yggdrasil's own keys, and the menu's (Quit, Hide, Minimize), aren't the shell's.
+                let key = event.charactersIgnoringModifiers().map(|c| c.to_string()).unwrap_or_default();
+                let cmd = match key.as_str() {
+                    "t" => Some(Cmd::New),
+                    "w" => Some(Cmd::Close),
+                    "," => Some(Cmd::Settings),
+                    "q" | "h" | "m" => return objc2::runtime::Bool::NO,
+                    k => k.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).map(Cmd::Goto),
+                };
+                if let Some(cmd) = cmd {
+                    CMDS.with(|c| c.borrow_mut().push(cmd));
+                    wakeup(std::ptr::null_mut());
+                    return objc2::runtime::Bool::YES;
+                }
+            }
+            if first.is_some_and(|f| std::ptr::eq(&*f, me)) && flags.contains(NSEventModifierFlags::Command) {
                 let chars = event.characters().map(|c| c.to_string());
                 send(s, event, g::ACTION_PRESS, mods(event.modifierFlags()), 0, chars.as_deref().and_then(printable), false);
                 return objc2::runtime::Bool::YES;
@@ -312,7 +342,7 @@ define_class!(
 
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
-            let Some(s) = surface() else { return };
+            let Some(s) = self.surface() else { return };
             let precise = event.hasPreciseScrollingDeltas();
             let (x, y) = (event.scrollingDeltaX(), event.scrollingDeltaY());
             unsafe { g::ghostty_surface_mouse_scroll(s, x, y, if precise { g::SCROLL_PRECISE } else { 0 }) };
@@ -326,10 +356,10 @@ define_class!(
         #[unsafe(method(insertText:replacementRange:))]
         unsafe fn insert_text(&self, string: &AnyObject, _range: NSRange) {
             let text = text_of(string);
-            unmark();
+            unmark(self.surface());
             let in_key = TYPED.with(|t| t.borrow_mut().as_mut().map(|v| v.push(text.clone())).is_some());
             // Not from a key (the character viewer, dictation): typed as it is.
-            if !in_key && let Some(s) = surface() {
+            if !in_key && let Some(s) = self.surface() {
                 unsafe { g::ghostty_surface_text(s, text.as_ptr().cast(), text.len()) };
             }
         }
@@ -344,14 +374,14 @@ define_class!(
             let text = text_of(string);
             MARKED.with(|m| *m.borrow_mut() = text);
             // Outside a key (the input method changed it on its own), shown at once.
-            if TYPED.with(|t| t.borrow().is_none()) && let Some(s) = surface() {
+            if TYPED.with(|t| t.borrow().is_none()) && let Some(s) = self.surface() {
                 sync_preedit(s, true);
             }
         }
 
         #[unsafe(method(unmarkText))]
         fn unmark_text(&self) {
-            unmark();
+            unmark(self.surface());
         }
 
         #[unsafe(method(selectedRange))]
@@ -383,7 +413,7 @@ define_class!(
         // Where the input method puts its candidates: under the cursor.
         #[unsafe(method(firstRectForCharacterRange:actualRange:))]
         unsafe fn first_rect(&self, _range: NSRange, _actual: NSRangePointer) -> NSRect {
-            let Some(s) = surface() else { return NSRect::ZERO };
+            let Some(s) = self.surface() else { return NSRect::ZERO };
             let (mut x, mut y, mut w, mut h) = (0.0, 0.0, 0.0, 0.0);
             unsafe { g::ghostty_surface_ime_point(s, &mut x, &mut y, &mut w, &mut h) };
             // Points from the view's top left (it's flipped); y is the cursor cell's bottom.
@@ -417,8 +447,12 @@ fn translated(event: &NSEvent, flags: NSEventModifierFlags) -> Option<Retained<N
 }
 
 impl TermView {
+    fn surface(&self) -> Option<g::Surface> {
+        PANES.with(|p| p.borrow().iter().find(|p| std::ptr::eq(&*p.view, self)).map(|p| p.surface))
+    }
+
     fn mouse(&self, event: &NSEvent, button: Option<(c_int, c_int)>) {
-        let Some(s) = surface() else { return };
+        let Some(s) = self.surface() else { return };
         let p = self.convertPoint_fromView(event.locationInWindow(), None);
         let m = mods(event.modifierFlags());
         unsafe {
@@ -441,14 +475,16 @@ extern "C" fn action(_: g::App, _: g::Target, _: g::Action) -> bool {
 }
 
 extern "C" fn read_clipboard(
-    _: *mut c_void,
+    userdata: *mut c_void,
     _: c_int,
     state: *mut c_void,
     _: *const *const c_char,
     _: usize,
     _: bool,
 ) -> c_int {
-    let (Some(_), Some(s)) = (MainThreadMarker::new(), surface()) else { return g::CLIPBOARD_READ_UNAVAILABLE };
+    let (Some(_), Some(s)) = (MainThreadMarker::new(), surface_of(userdata as u64)) else {
+        return g::CLIPBOARD_READ_UNAVAILABLE;
+    };
     let text =
         unsafe { NSPasteboard::generalPasteboard().stringForType(NSPasteboardTypeString) }.map(|t| t.to_string());
     let Some(text) = text else { return g::CLIPBOARD_READ_UNAVAILABLE };
@@ -481,31 +517,18 @@ extern "C" fn write_clipboard(_: *mut c_void, _: c_int, contents: *const g::Clip
     unsafe { pb.setString_forType(&NSString::from_str(&text), NSPasteboardTypeString) };
 }
 
-extern "C" fn close_surface(_: *mut c_void, _: bool) {
-    PANE.with(|p| {
-        if let Some(p) = p.borrow_mut().as_mut() {
-            p.ended = true;
-        }
-    });
+// Only noted here: Ghostty may ask while it's busy with the terminal (in a tick), so it's closed on the next frame.
+extern "C" fn close_surface(userdata: *mut c_void, _: bool) {
+    ENDED.with(|e| e.borrow_mut().push(userdata as u64));
     wakeup(std::ptr::null_mut());
 }
 
-fn parent_view(frame: &eframe::Frame) -> Option<Retained<NSView>> {
-    let handle = frame.window_handle().ok()?;
-    let RawWindowHandle::AppKit(h) = handle.as_raw() else { return None };
-    unsafe { Retained::retain(h.ns_view.as_ptr().cast::<NSView>()) }
-}
-
-fn start(frame: &eframe::Frame, ctx: &egui::Context, folder: &std::path::Path) -> Result<Pane, String> {
-    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
-    let parent = parent_view(frame).ok_or("no window to draw into")?;
-    let _ = CTX.set(ctx.clone());
-    static INIT: OnceLock<(usize, usize)> = OnceLock::new();
-    let (app, _) = *INIT.get_or_init(|| unsafe {
+fn app() -> Result<g::App, String> {
+    let app = APP.get_or_init(|| unsafe {
         let name = CString::new("yggdrasil").unwrap();
         let mut argv = [name.into_raw(), std::ptr::null_mut()];
         if g::ghostty_init(1, argv.as_mut_ptr()) != 0 {
-            return (0, 0);
+            return Err("Ghostty's library didn't start.".into());
         }
         let config = g::ghostty_config_new();
         g::ghostty_config_load_default_files(config);
@@ -521,95 +544,176 @@ fn start(frame: &eframe::Frame, ctx: &egui::Context, folder: &std::path::Path) -
             write_clipboard_cb: Some(write_clipboard),
             close_surface_cb: Some(close_surface),
         };
-        (g::ghostty_app_new(&runtime, config) as usize, config as usize)
+        let app = g::ghostty_app_new(&runtime, config);
+        if app.is_null() {
+            return Err("Ghostty's library didn't start.".into());
+        }
+        g::ghostty_app_set_focus(app, true);
+        Ok(app as usize)
     });
-    if app == 0 {
-        return Err("Ghostty's library didn't start".into());
+    app.clone().map(|a| a as g::App)
+}
+
+/// Why there are no terminals, if Ghostty's library didn't start.
+pub fn failed() -> Option<String> {
+    APP.get().and_then(|a| a.clone().err())
+}
+
+/// The window the terminals are drawn in; called every frame before the others.
+pub fn attach(frame: &eframe::Frame, ctx: &egui::Context) {
+    let _ = CTX.set(ctx.clone());
+    if PARENT.with(|p| p.borrow().is_none()) {
+        let handle = frame.window_handle().ok();
+        let view = handle.and_then(|h| match h.as_raw() {
+            RawWindowHandle::AppKit(h) => unsafe { Retained::retain(h.ns_view.as_ptr().cast::<NSView>()) },
+            _ => None,
+        });
+        PARENT.with(|p| *p.borrow_mut() = view);
     }
-    let app = app as g::App;
+}
+
+/// Starts a terminal in `folder`, hidden until it's shown; `input` is typed into its shell once it runs.
+pub fn open(id: u64, folder: &std::path::Path, input: Option<&str>) -> Result<(), String> {
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let app = app()?;
+    let parent = PARENT.with(|p| p.borrow().clone()).ok_or("There's no window to draw the terminal in.")?;
     let view: Retained<TermView> = unsafe { msg_send![mtm.alloc::<TermView>(), initWithFrame: NSRect::ZERO] };
+    view.setHidden(true);
     parent.addSubview(&view);
     let scale = view.window().map_or(2.0, |w| w.backingScaleFactor());
     let dir = CString::new(folder.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
+    let input = input.and_then(|i| CString::new(format!("{i}\n")).ok());
     let mut cfg = unsafe { g::ghostty_surface_config_new() };
     cfg.platform_tag = g::PLATFORM_MACOS;
     cfg.platform =
         g::Platform { macos: g::PlatformMacos { nsview: Retained::as_ptr(&view) as *mut AnyObject as *mut c_void } };
+    cfg.userdata = id as *mut c_void;
     cfg.scale_factor = scale;
     cfg.working_directory = dir.as_ptr();
+    cfg.initial_input = input.as_ref().map_or(std::ptr::null(), |i| i.as_ptr());
     cfg.context = g::CONTEXT_WINDOW;
     let surface = unsafe { g::ghostty_surface_new(app, &cfg) };
     if surface.is_null() {
         view.removeFromSuperview();
-        return Err("Ghostty couldn't make a terminal".into());
+        return Err("Ghostty couldn't start a terminal.".into());
     }
     unsafe {
         g::ghostty_surface_set_content_scale(surface, scale, scale);
-        g::ghostty_surface_set_occlusion(surface, true);
-        g::ghostty_app_set_focus(app, true);
+        g::ghostty_surface_set_occlusion(surface, false);
     }
-    Ok(Pane { app, surface, view, parent, size: (0, 0), ended: false })
+    PANES.with(|p| p.borrow_mut().push(Pane { id, surface, view, size: (0, 0) }));
+    Ok(())
 }
 
-/// Shows the terminal in `rect` (the window's points), starting it the first time; ticks Ghostty. An error says why
-/// there is none.
-pub fn show(
-    frame: &eframe::Frame,
-    ctx: &egui::Context,
-    rect: egui::Rect,
-    folder: &std::path::Path,
-) -> Result<(), String> {
-    if let Some(e) = FAILED.with(|f| f.borrow().clone()) {
-        return Err(e);
-    }
-    let ended = PANE.with(|p| p.borrow().as_ref().is_some_and(|p| p.ended));
-    if ended {
-        // The shell ended (exit): a fresh one takes its place.
-        PANE.with(|p| {
-            if let Some(old) = p.borrow_mut().take() {
-                old.view.removeFromSuperview();
-                unsafe { g::ghostty_surface_free(old.surface) };
-            }
-        });
-    }
-    if PANE.with(|p| p.borrow().is_none()) {
-        match start(frame, ctx, folder) {
-            Ok(pane) => PANE.with(|p| *p.borrow_mut() = Some(pane)),
-            Err(e) => {
-                FAILED.with(|f| *f.borrow_mut() = Some(e.clone()));
-                return Err(e);
-            }
-        }
-    }
-    PANE.with(|p| {
+/// Ends the terminal and what runs in it.
+pub fn close(id: u64) {
+    let pane = PANES.with(|p| {
         let mut p = p.borrow_mut();
-        let Some(pane) = p.as_mut() else { return };
-        pane.view.setFrame(NSRect::new(
+        let i = p.iter().position(|p| p.id == id)?;
+        Some(p.remove(i))
+    });
+    if let Some(pane) = pane {
+        if is_first_responder(&pane.view) {
+            release_focus();
+        }
+        pane.view.removeFromSuperview();
+        unsafe { g::ghostty_surface_free(pane.surface) };
+    }
+}
+
+/// Its terminal device (`/dev/ttys012`), once its shell runs.
+pub fn tty(id: u64) -> String {
+    let Some(s) = surface_of(id) else { return String::new() };
+    unsafe {
+        let name = g::ghostty_surface_tty_name(s);
+        let out = if name.ptr.is_null() {
+            String::new()
+        } else {
+            String::from_utf8_lossy(std::slice::from_raw_parts(name.ptr.cast::<u8>(), name.len)).into_owned()
+        };
+        g::ghostty_string_free(name);
+        out
+    }
+}
+
+/// Whether a program still runs in it (more than its shell waiting at the prompt), as Ghostty tells.
+pub fn needs_confirm(id: u64) -> bool {
+    surface_of(id).is_some_and(|s| unsafe { g::ghostty_surface_needs_confirm_quit(s) })
+}
+
+pub fn take_ended() -> Vec<u64> {
+    ENDED.with(|e| std::mem::take(&mut *e.borrow_mut()))
+}
+
+pub fn take_cmds() -> Vec<Cmd> {
+    CMDS.with(|c| std::mem::take(&mut *c.borrow_mut()))
+}
+
+fn is_first_responder(view: &TermView) -> bool {
+    let first: Option<Retained<NSResponder>> = view.window().and_then(|w| w.firstResponder());
+    let me: &NSResponder = view;
+    first.is_some_and(|f| std::ptr::eq(&*f, me))
+}
+
+/// Shows `shown` in `rect` (the window's points) and hides the others, all of them while `visible` is false (a dialog
+/// of egui's is open, which the terminal would cover); ticks Ghostty.
+pub fn layout(shown: Option<u64>, rect: egui::Rect, visible: bool) {
+    // Nothing of PANES is held while Ghostty works: it may call back.
+    let panes: Vec<Pane> = PANES.with(|p| {
+        p.borrow().iter().map(|p| Pane { id: p.id, surface: p.surface, view: p.view.clone(), size: p.size }).collect()
+    });
+    for Pane { id, surface: s, view, size } in panes {
+        let on = visible && Some(id) == shown;
+        if view.isHidden() == on {
+            if !on && is_first_responder(&view) {
+                release_focus();
+            }
+            view.setHidden(!on);
+            unsafe { g::ghostty_surface_set_occlusion(s, on) };
+        }
+        if !on {
+            continue;
+        }
+        view.setFrame(NSRect::new(
             NSPoint::new(rect.min.x as f64, rect.min.y as f64),
             NSSize::new(rect.width() as f64, rect.height() as f64),
         ));
-        let scale = pane.view.window().map_or(2.0, |w| w.backingScaleFactor());
+        let scale = view.window().map_or(2.0, |w| w.backingScaleFactor());
         let px = ((rect.width() as f64 * scale) as u32, (rect.height() as f64 * scale) as u32);
-        if px != pane.size {
-            pane.size = px;
+        if px != size {
             unsafe {
-                g::ghostty_surface_set_content_scale(pane.surface, scale, scale);
-                g::ghostty_surface_set_size(pane.surface, px.0, px.1);
-                g::ghostty_surface_refresh(pane.surface);
+                g::ghostty_surface_set_content_scale(s, scale, scale);
+                g::ghostty_surface_set_size(s, px.0, px.1);
+                g::ghostty_surface_refresh(s);
             }
+            PANES.with(|p| {
+                if let Some(p) = p.borrow_mut().iter_mut().find(|p| p.id == id) {
+                    p.size = px;
+                }
+            });
         }
-        unsafe { g::ghostty_app_tick(pane.app) };
-    });
-    Ok(())
+    }
+    if let Ok(app) = app() {
+        unsafe { g::ghostty_app_tick(app) };
+    }
+}
+
+/// The keys go to this terminal (it's shown, or about to be).
+pub fn focus(id: u64) {
+    let view = PANES.with(|p| p.borrow().iter().find(|p| p.id == id).map(|p| p.view.clone()));
+    if let Some(view) = view
+        && let Some(w) = view.window()
+    {
+        w.makeFirstResponder(Some(&view));
+    }
 }
 
 /// A click into the tree takes the keys back from the terminal (UC-02.7).
 pub fn release_focus() {
-    PANE.with(|p| {
-        if let Some(pane) = p.borrow().as_ref()
-            && let Some(w) = pane.view.window()
-        {
-            w.makeFirstResponder(Some(&pane.parent));
-        }
-    });
+    let parent = PARENT.with(|p| p.borrow().clone());
+    if let Some(parent) = parent
+        && let Some(w) = parent.window()
+    {
+        w.makeFirstResponder(Some(&parent));
+    }
 }

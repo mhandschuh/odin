@@ -5,6 +5,10 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- **Projects open in the window:** Terminal, Claude, Claude in a sandbox and Resume open a terminal in the pane on the
+  right; click a session or a *Terminal* row in the tree to show its terminal. ⌘T opens another terminal in the shown
+  one's project, ⌘W closes it, ⌘1 to ⌘9 switch. *Open in Ghostty* in a project's menu still opens Ghostty's own window.
+  Quitting while a program runs in a terminal asks first; Claude sessions can be continued with Resume.
 - **A terminal in the window** (a first test): on the Mac, the right side of Yggdrasil's window is a terminal drawn by
   Ghostty itself, with your Ghostty settings (font, colors, keys); click into it to type, into the tree to go back. Every way of typing works in it as in Ghostty: accents on U.S.
   International (" then o is ö), emoji from the character viewer, modifier keys alone.
