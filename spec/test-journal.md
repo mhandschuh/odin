@@ -5,6 +5,13 @@ without a test, listed in status.md under *Next hand-check run*), each ✓ passe
 was seen. When a run fails, the fix gets a new run, on the same day too. Only added to, never rewritten; a
 criterion's newest result counts. How and when to test: test-plan.md.
 
+## 2026-10-30 · run 4 · in use · 43ad460 (./x run) on the Mac
+
+| Criterion | Result | Seen                                                                                                                                                                    |
+| --------- | :----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UC-03.7   | ✗      | A session running in Orca, under *Other sessions*: clicking it brought some other Ghostty window to the front, and no message said the terminal is unknown.             |
+| UC-03.6   | —      | `sbx run` started by hand in a terminal of the pane, then `/resume`: works, but no session or state shows; whether the project's sandbox sessions were on is not known. |
+
 ## 2026-10-30 · run 3 · b146c8d (./x run) on the Mac
 
 | Criterion | Result | Seen                                                                                                          |

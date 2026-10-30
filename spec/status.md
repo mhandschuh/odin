@@ -44,33 +44,33 @@ Traceability: 36 of 36 use-case criteria trace to a requirement.
 
 Every criterion without a test, and those test-plan.md says need a hand check too, for the next run on the device: copy the table into [test-journal.md](test-journal.md) as a new run on top and fill in *Result* (✓, ✗, or — when not run) and *Seen*. Due ones first: never checked, failed, or last checked before the last release. How: [test-plan.md](test-plan.md).
 
-| Criterion | Due           | Last         | Result | Seen |
-| --------- | ------------- | ------------ | :----: | ---- |
-| UC-01.3   | never checked | —            |        |      |
-| UC-02.1   | never checked | —            |        |      |
-| UC-02.2   | never checked | —            |        |      |
-| UC-02.3   | never checked | —            |        |      |
-| UC-02.4   | never checked | —            |        |      |
-| UC-02.5   | never checked | —            |        |      |
-| UC-02.9   | never checked | —            |        |      |
-| UC-02.10  | never checked | —            |        |      |
-| UC-02.11  | never checked | —            |        |      |
-| UC-02.12  | never checked | —            |        |      |
-| UC-03.1   | never checked | —            |        |      |
-| UC-03.2   | never checked | —            |        |      |
-| UC-03.3   | never checked | —            |        |      |
-| UC-03.4   | never checked | —            |        |      |
-| UC-03.6   | never checked | —            |        |      |
-| UC-03.7   | never checked | —            |        |      |
-| UC-03.9   | never checked | —            |        |      |
-| UC-05.1   | never checked | —            |        |      |
-| UC-05.3   | never checked | —            |        |      |
-| NFR-04.1  | never checked | —            |        |      |
-| NFR-05.1  | never checked | —            |        |      |
-| NFR-06.1  | never checked | —            |        |      |
-| NFR-07.1  | never checked | —            |        |      |
-| UC-02.7   |               | ✓ 2026-10-30 |        |      |
-| UC-02.8   |               | ✓ 2026-10-30 |        |      |
+| Criterion | Due                  | Last         | Result | Seen |
+| --------- | -------------------- | ------------ | :----: | ---- |
+| UC-01.3   | never checked        | —            |        |      |
+| UC-02.1   | never checked        | —            |        |      |
+| UC-02.2   | never checked        | —            |        |      |
+| UC-02.3   | never checked        | —            |        |      |
+| UC-02.4   | never checked        | —            |        |      |
+| UC-02.5   | never checked        | —            |        |      |
+| UC-02.9   | never checked        | —            |        |      |
+| UC-02.10  | never checked        | —            |        |      |
+| UC-02.11  | never checked        | —            |        |      |
+| UC-02.12  | never checked        | —            |        |      |
+| UC-03.1   | never checked        | —            |        |      |
+| UC-03.2   | never checked        | —            |        |      |
+| UC-03.3   | never checked        | —            |        |      |
+| UC-03.4   | never checked        | —            |        |      |
+| UC-03.6   | never checked        | —            |        |      |
+| UC-03.7   | failed on 2026-10-30 | ✗ 2026-10-30 |        |      |
+| UC-03.9   | never checked        | —            |        |      |
+| UC-05.1   | never checked        | —            |        |      |
+| UC-05.3   | never checked        | —            |        |      |
+| NFR-04.1  | never checked        | —            |        |      |
+| NFR-05.1  | never checked        | —            |        |      |
+| NFR-06.1  | never checked        | —            |        |      |
+| NFR-07.1  | never checked        | —            |        |      |
+| UC-02.7   |                      | ✓ 2026-10-30 |        |      |
+| UC-02.8   |                      | ✓ 2026-10-30 |        |      |
 
 ## Use-case diagram
 
@@ -109,7 +109,7 @@ Every criterion without a test, and those test-plan.md says need a hand check to
 - 🟥 **UC-03.4** Given a running session, when its Claude process ends (the person quits it, closes the tab, or it crashes), then the session leaves the running sessions within 2 seconds and is listed among the earlier sessions. *(the test passes, the hand check is missing: events::tests::uc_03_4_a_session_ends_with_its_end_or_its_process, system::tests::uc_03_4_a_process_that_ended_is_seen_as_gone)*
 - 🟩 **UC-03.5** Given Claude started in a terminal Yggdrasil didn't open, in the folder of the project *vesta* or a folder inside it, then its session shows under *vesta* like the others. *(test: tree::tests::uc_03_5_a_folder_belongs_to_the_deepest_project_it_is_in)*
 - 🟥 **UC-03.6** Given Claude running in a sandbox of the project *vesta*, then its session shows under *vesta*, marked as in a sandbox, with its state and agents like the others; when the sandbox stops, the session shows as ended. *(the test passes, the hand check is missing: events::tests::uc_03_6_a_sandbox_session_ends_when_its_sandbox_stops, sbx::tests::uc_03_6_sandboxes_and_their_workspace)*
-- 🟥 **UC-03.7** Given a session in a terminal of the pane, when Alice clicks it in the tree, then the pane shows that terminal and it takes what she types; for a session in a Ghostty tab Yggdrasil opened, that tab comes to the front; for a session in a terminal Yggdrasil doesn't know, Ghostty comes to the front and Yggdrasil says it can't tell which tab. *(the test passes, the hand check is missing: ghostty::tests::uc_03_7_the_sessions_terminal_is_found_by_its_tty, panes::tests::uc_03_7_a_session_is_found_in_its_terminal_by_device, panes::tests::uc_03_7_sandbox_sessions_are_found_in_the_sandbox_terminals_of_their_project_in_order)*
+- 🟥 **UC-03.7** Given a session in a terminal of the pane, when Alice clicks it in the tree, then the pane shows that terminal and it takes what she types; for a session in a Ghostty tab Yggdrasil opened, that tab comes to the front; for a session in a terminal Yggdrasil doesn't know, Ghostty comes to the front and Yggdrasil says it can't tell which tab. *(failed by hand: 2026-10-30, run 4 · in use · 43ad460 (./x run) on the Mac: A session running in Orca, under *Other sessions*: clicking it brought some other Ghostty window to the front, and no message said the terminal is unknown.)*
 - 🟩 **UC-03.8** Given earlier sessions of *vesta*, then they are listed under *vesta*'s running sessions, newest first, each with when it was last active, at most 10. *(test: history::tests::uc_03_8_earlier_sessions_newest_first_at_most_10)*
 - 🟥 **UC-03.9** Given a session started in a folder that is in no project, then it shows under *Other sessions* at the end of the tree.
 
