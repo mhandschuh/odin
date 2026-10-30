@@ -20,6 +20,10 @@ pub const MODS_CTRL: c_int = 1 << 1;
 pub const MODS_ALT: c_int = 1 << 2;
 pub const MODS_SUPER: c_int = 1 << 3;
 pub const MODS_CAPS: c_int = 1 << 4;
+pub const MODS_SHIFT_RIGHT: c_int = 1 << 6;
+pub const MODS_CTRL_RIGHT: c_int = 1 << 7;
+pub const MODS_ALT_RIGHT: c_int = 1 << 8;
+pub const MODS_SUPER_RIGHT: c_int = 1 << 9;
 
 pub const MOUSE_RELEASE: c_int = 0;
 pub const MOUSE_PRESS: c_int = 1;
@@ -147,6 +151,9 @@ unsafe extern "C" {
     pub fn ghostty_surface_set_size(surface: Surface, width: u32, height: u32);
     pub fn ghostty_surface_key(surface: Surface, key: InputKey) -> bool;
     pub fn ghostty_surface_text(surface: Surface, text: *const c_char, len: usize);
+    pub fn ghostty_surface_preedit(surface: Surface, text: *const c_char, len: usize);
+    pub fn ghostty_surface_key_translation_mods(surface: Surface, mods: c_int) -> c_int;
+    pub fn ghostty_surface_ime_point(surface: Surface, x: *mut f64, y: *mut f64, w: *mut f64, h: *mut f64);
     pub fn ghostty_surface_mouse_button(surface: Surface, state: c_int, button: c_int, mods: c_int) -> bool;
     pub fn ghostty_surface_mouse_pos(surface: Surface, x: f64, y: f64, mods: c_int);
     pub fn ghostty_surface_mouse_scroll(surface: Surface, x: f64, y: f64, mods: c_int);

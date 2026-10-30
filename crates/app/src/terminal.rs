@@ -3,10 +3,15 @@
 use crate::ghostty_ffi as g;
 use eframe::egui;
 use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
-use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
-use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSPasteboard, NSPasteboardTypeString, NSResponder, NSView};
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2::runtime::{AnyObject, NSObjectProtocol, Sel};
+use objc2::{ClassType, MainThreadMarker, MainThreadOnly, define_class, msg_send};
+use objc2_app_kit::{
+    NSEvent, NSEventModifierFlags, NSPasteboard, NSPasteboardTypeString, NSResponder, NSTextInputClient, NSView,
+};
+use objc2_foundation::{
+    NSArray, NSAttributedString, NSAttributedStringKey, NSNotFound, NSPoint, NSRange, NSRangePointer, NSRect, NSSize,
+    NSString, NSUInteger,
+};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::cell::RefCell;
 use std::ffi::{CString, c_char, c_int, c_void};
@@ -32,19 +37,34 @@ fn surface() -> Option<g::Surface> {
     PANE.with(|p| p.borrow().as_ref().filter(|p| !p.ended).map(|p| p.surface))
 }
 
+thread_local! {
+    /// Text an input method is still composing (a dead key's accent, a reading before its kanji): shown at the cursor,
+    /// not yet typed.
+    static MARKED: RefCell<String> = const { RefCell::new(String::new()) };
+    /// While macOS interprets a key: the text it produced, sent to Ghostty with that key.
+    static TYPED: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+// The device-dependent bits of the modifier flags that tell the right-hand keys apart (IOKit's NX_DEVICE…KEYMASK).
+const RIGHT_SHIFT: usize = 0x04;
+const RIGHT_CTRL: usize = 0x2000;
+const RIGHT_ALT: usize = 0x40;
+const RIGHT_CMD: usize = 0x10;
+
 fn mods(flags: NSEventModifierFlags) -> c_int {
     let mut m = 0;
-    if flags.contains(NSEventModifierFlags::Shift) {
-        m |= g::MODS_SHIFT;
-    }
-    if flags.contains(NSEventModifierFlags::Control) {
-        m |= g::MODS_CTRL;
-    }
-    if flags.contains(NSEventModifierFlags::Option) {
-        m |= g::MODS_ALT;
-    }
-    if flags.contains(NSEventModifierFlags::Command) {
-        m |= g::MODS_SUPER;
+    for (flag, side, bit, right) in [
+        (NSEventModifierFlags::Shift, RIGHT_SHIFT, g::MODS_SHIFT, g::MODS_SHIFT_RIGHT),
+        (NSEventModifierFlags::Control, RIGHT_CTRL, g::MODS_CTRL, g::MODS_CTRL_RIGHT),
+        (NSEventModifierFlags::Option, RIGHT_ALT, g::MODS_ALT, g::MODS_ALT_RIGHT),
+        (NSEventModifierFlags::Command, RIGHT_CMD, g::MODS_SUPER, g::MODS_SUPER_RIGHT),
+    ] {
+        if flags.contains(flag) {
+            m |= bit;
+            if flags.0 & side != 0 {
+                m |= right;
+            }
+        }
     }
     if flags.contains(NSEventModifierFlags::CapsLock) {
         m |= g::MODS_CAPS;
@@ -52,31 +72,89 @@ fn mods(flags: NSEventModifierFlags) -> c_int {
     m
 }
 
-/// Text a key types: printable characters only, not control codes or the function keys' private codes.
-fn typed(event: &NSEvent) -> Option<CString> {
-    let s = event.characters()?.to_string();
-    let c = s.chars().next()?;
-    let code = c as u32;
-    (code >= 0x20 && code != 0x7f && !(0xF700..=0xF8FF).contains(&code)).then(|| CString::new(s).ok()).flatten()
+/// `flags` with Shift, Control, Option and Command as in Ghostty's `mods`.
+fn with_mods(mut flags: NSEventModifierFlags, m: c_int) -> NSEventModifierFlags {
+    for (flag, bit) in [
+        (NSEventModifierFlags::Shift, g::MODS_SHIFT),
+        (NSEventModifierFlags::Control, g::MODS_CTRL),
+        (NSEventModifierFlags::Option, g::MODS_ALT),
+        (NSEventModifierFlags::Command, g::MODS_SUPER),
+    ] {
+        flags.set(flag, m & bit != 0);
+    }
+    flags
 }
 
-fn key(event: &NSEvent, action: c_int) {
-    let Some(surface) = surface() else { return };
-    let m = mods(event.modifierFlags());
-    let text = if action == g::ACTION_RELEASE { None } else { typed(event) };
-    let unshifted =
-        event.charactersIgnoringModifiers().and_then(|s| s.to_string().chars().next()).map_or(0, |c| c as u32);
+/// Text a key types: printable characters only, not control codes or the function keys' private codes.
+fn printable(s: &str) -> Option<&str> {
+    let code = s.chars().next()? as u32;
+    (code >= 0x20 && code != 0x7f && !(0xF700..=0xF8FF).contains(&code)).then_some(s)
+}
+
+fn unshifted(event: &NSEvent) -> u32 {
+    event
+        .charactersByApplyingModifiers(NSEventModifierFlags::empty())
+        .and_then(|s| s.to_string().chars().next())
+        .map_or(0, |c| c as u32)
+}
+
+fn send(
+    s: g::Surface,
+    event: &NSEvent,
+    action: c_int,
+    mods: c_int,
+    consumed: c_int,
+    text: Option<&str>,
+    composing: bool,
+) {
+    let text = text.and_then(|t| CString::new(t).ok());
     let key = g::InputKey {
         action,
-        mods: m,
-        // What Shift and Option did to the text is used up by it; Ghostty encodes the rest (Ctrl-C, ⌘-…).
-        consumed_mods: if text.is_some() { m & (g::MODS_SHIFT | g::MODS_ALT) } else { 0 },
+        mods,
+        consumed_mods: consumed,
         keycode: event.keyCode() as u32,
         text: text.as_ref().map_or(std::ptr::null(), |t| t.as_ptr()),
-        unshifted_codepoint: unshifted,
-        composing: false,
+        unshifted_codepoint: unshifted(event),
+        composing,
     };
-    unsafe { g::ghostty_surface_key(surface, key) };
+    unsafe { g::ghostty_surface_key(s, key) };
+}
+
+fn has_marked() -> bool {
+    MARKED.with(|m| !m.borrow().is_empty())
+}
+
+/// Shows what's being composed at the cursor, or clears it once it's typed (`clear`: it was shown before).
+fn sync_preedit(s: g::Surface, clear: bool) {
+    MARKED.with(|m| {
+        let m = m.borrow();
+        if !m.is_empty() {
+            unsafe { g::ghostty_surface_preedit(s, m.as_ptr().cast(), m.len()) };
+        } else if clear {
+            unsafe { g::ghostty_surface_preedit(s, std::ptr::null(), 0) };
+        }
+    });
+}
+
+/// The composing is over: what's shown at the cursor goes.
+fn unmark() {
+    if has_marked() {
+        MARKED.with(|m| m.borrow_mut().clear());
+        if let Some(s) = surface() {
+            sync_preedit(s, true);
+        }
+    }
+}
+
+/// The text of what an input method hands over: a string or an attributed string.
+fn text_of(obj: &AnyObject) -> String {
+    let attributed: bool = unsafe { msg_send![obj, isKindOfClass: NSAttributedString::class()] };
+    if attributed {
+        let s: Retained<NSString> = unsafe { msg_send![obj, string] };
+        s.to_string()
+    } else {
+        unsafe { &*(obj as *const AnyObject).cast::<NSString>() }.to_string()
+    }
 }
 
 define_class!(
@@ -112,14 +190,77 @@ define_class!(
             true
         }
 
+        // Like Ghostty's own view: macOS's text input interprets the key first, so dead keys (" then o is ö on US
+        // International) and input methods compose their text; the key goes to Ghostty with what it typed.
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
-            key(event, if event.isARepeat() { g::ACTION_REPEAT } else { g::ACTION_PRESS });
+            let Some(s) = surface() else { return };
+            let flags = event.modifierFlags();
+            let m = mods(flags);
+            // With Ghostty's macos-option-as-alt, Option is Alt: the text is taken as if it weren't held.
+            let tm = unsafe { g::ghostty_surface_key_translation_mods(s, m) };
+            let translated = if tm == m { None } else { translated(event, with_mods(flags, tm)) };
+            let event_for_text: &NSEvent = translated.as_deref().unwrap_or(event);
+            let action = if event.isARepeat() { g::ACTION_REPEAT } else { g::ACTION_PRESS };
+            let before = has_marked();
+            TYPED.set(Some(Vec::new()));
+            self.interpretKeyEvents(&NSArray::from_slice(&[event_for_text]));
+            let typed = TYPED.take().unwrap_or_default();
+            sync_preedit(s, before);
+            // What Shift and Option did to the text is used up by it; Ghostty encodes the rest (Ctrl-C, ⌘-…).
+            let consumed = tm & !(g::MODS_CTRL | g::MODS_SUPER);
+            if typed.is_empty() {
+                let chars = event_for_text.characters().map(|c| c.to_string());
+                let composing = has_marked() || before;
+                send(s, event, action, m, consumed, chars.as_deref().and_then(printable), composing);
+            } else {
+                for t in &typed {
+                    send(s, event, action, m, consumed, Some(t), false);
+                }
+            }
         }
 
         #[unsafe(method(keyUp:))]
         fn key_up(&self, event: &NSEvent) {
-            key(event, g::ACTION_RELEASE);
+            if let Some(s) = surface() {
+                send(s, event, g::ACTION_RELEASE, mods(event.modifierFlags()), 0, None, false);
+            }
+        }
+
+        // Modifier keys on their own (Ghostty's keybindings and programs that see Shift or Ctrl alone).
+        #[unsafe(method(flagsChanged:))]
+        fn flags_changed(&self, event: &NSEvent) {
+            let Some(s) = surface() else { return };
+            let (bit, right) = match event.keyCode() {
+                0x39 => (g::MODS_CAPS, None),
+                0x38 => (g::MODS_SHIFT, None),
+                0x3C => (g::MODS_SHIFT, Some(RIGHT_SHIFT)),
+                0x3B => (g::MODS_CTRL, None),
+                0x3E => (g::MODS_CTRL, Some(RIGHT_CTRL)),
+                0x3A => (g::MODS_ALT, None),
+                0x3D => (g::MODS_ALT, Some(RIGHT_ALT)),
+                0x37 => (g::MODS_SUPER, None),
+                0x36 => (g::MODS_SUPER, Some(RIGHT_CMD)),
+                _ => return,
+            };
+            if has_marked() {
+                return;
+            }
+            let flags = event.modifierFlags();
+            let m = mods(flags);
+            let down = m & bit != 0 && right.is_none_or(|r| flags.0 & r != 0);
+            let action = if down { g::ACTION_PRESS } else { g::ACTION_RELEASE };
+            // A flags event has no characters (asking for them throws), so no text and no unshifted key.
+            let key = g::InputKey {
+                action,
+                mods: m,
+                consumed_mods: 0,
+                keycode: event.keyCode() as u32,
+                text: std::ptr::null(),
+                unshifted_codepoint: 0,
+                composing: false,
+            };
+            unsafe { g::ghostty_surface_key(s, key) };
         }
 
         // Key equivalents (⌘C, ⌘V, …) go to the terminal while it has the focus.
@@ -127,8 +268,10 @@ define_class!(
         fn perform_key_equivalent(&self, event: &NSEvent) -> objc2::runtime::Bool {
             let first: Option<Retained<NSResponder>> = self.window().and_then(|w| w.firstResponder());
             let me: &NSResponder = self;
+            let Some(s) = surface() else { return objc2::runtime::Bool::NO };
             if first.is_some_and(|f| std::ptr::eq(&*f, me)) && event.modifierFlags().contains(NSEventModifierFlags::Command) {
-                key(event, g::ACTION_PRESS);
+                let chars = event.characters().map(|c| c.to_string());
+                send(s, event, g::ACTION_PRESS, mods(event.modifierFlags()), 0, chars.as_deref().and_then(printable), false);
                 return objc2::runtime::Bool::YES;
             }
             objc2::runtime::Bool::NO
@@ -175,7 +318,103 @@ define_class!(
             unsafe { g::ghostty_surface_mouse_scroll(s, x, y, if precise { g::SCROLL_PRECISE } else { 0 }) };
         }
     }
+
+    unsafe impl NSObjectProtocol for TermView {}
+
+    // The text input client macOS composes into: dead keys, input methods, the emoji and character viewer.
+    unsafe impl NSTextInputClient for TermView {
+        #[unsafe(method(insertText:replacementRange:))]
+        unsafe fn insert_text(&self, string: &AnyObject, _range: NSRange) {
+            let text = text_of(string);
+            unmark();
+            let in_key = TYPED.with(|t| t.borrow_mut().as_mut().map(|v| v.push(text.clone())).is_some());
+            // Not from a key (the character viewer, dictation): typed as it is.
+            if !in_key && let Some(s) = surface() {
+                unsafe { g::ghostty_surface_text(s, text.as_ptr().cast(), text.len()) };
+            }
+        }
+
+        #[unsafe(method(doCommandBySelector:))]
+        unsafe fn do_command_by_selector(&self, _selector: Sel) {
+            // Return, Backspace, arrows: Ghostty encodes them from the key itself; nothing to do (and no beep).
+        }
+
+        #[unsafe(method(setMarkedText:selectedRange:replacementRange:))]
+        unsafe fn set_marked_text(&self, string: &AnyObject, _selected: NSRange, _replacement: NSRange) {
+            let text = text_of(string);
+            MARKED.with(|m| *m.borrow_mut() = text);
+            // Outside a key (the input method changed it on its own), shown at once.
+            if TYPED.with(|t| t.borrow().is_none()) && let Some(s) = surface() {
+                sync_preedit(s, true);
+            }
+        }
+
+        #[unsafe(method(unmarkText))]
+        fn unmark_text(&self) {
+            unmark();
+        }
+
+        #[unsafe(method(selectedRange))]
+        fn selected_range(&self) -> NSRange {
+            NSRange::new(NSNotFound as usize, 0)
+        }
+
+        #[unsafe(method(markedRange))]
+        fn marked_range(&self) -> NSRange {
+            let len = MARKED.with(|m| m.borrow().encode_utf16().count());
+            if len == 0 { NSRange::new(NSNotFound as usize, 0) } else { NSRange::new(0, len) }
+        }
+
+        #[unsafe(method(hasMarkedText))]
+        fn has_marked_text(&self) -> bool {
+            has_marked()
+        }
+
+        #[unsafe(method_id(attributedSubstringForProposedRange:actualRange:))]
+        unsafe fn attributed_substring(&self, _range: NSRange, _actual: NSRangePointer) -> Option<Retained<NSAttributedString>> {
+            None
+        }
+
+        #[unsafe(method_id(validAttributesForMarkedText))]
+        fn valid_attributes_for_marked_text(&self) -> Retained<NSArray<NSAttributedStringKey>> {
+            NSArray::new()
+        }
+
+        // Where the input method puts its candidates: under the cursor.
+        #[unsafe(method(firstRectForCharacterRange:actualRange:))]
+        unsafe fn first_rect(&self, _range: NSRange, _actual: NSRangePointer) -> NSRect {
+            let Some(s) = surface() else { return NSRect::ZERO };
+            let (mut x, mut y, mut w, mut h) = (0.0, 0.0, 0.0, 0.0);
+            unsafe { g::ghostty_surface_ime_point(s, &mut x, &mut y, &mut w, &mut h) };
+            // Points from the view's top left (it's flipped); y is the cursor cell's bottom.
+            let r = self.convertRect_toView(NSRect::new(NSPoint::new(x, y - h), NSSize::new(w, h)), None);
+            self.window().map_or(r, |win| win.convertRectToScreen(r))
+        }
+
+        #[unsafe(method(characterIndexForPoint:))]
+        fn character_index_for_point(&self, _point: NSPoint) -> NSUInteger {
+            0
+        }
+    }
 );
+
+/// The key as if only `flags` were held, for the text it types.
+fn translated(event: &NSEvent, flags: NSEventModifierFlags) -> Option<Retained<NSEvent>> {
+    let chars = event.charactersByApplyingModifiers(flags)?;
+    let plain = event.charactersIgnoringModifiers().unwrap_or_else(|| chars.clone());
+    NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+        event.r#type(),
+        event.locationInWindow(),
+        flags,
+        event.timestamp(),
+        event.windowNumber(),
+        None,
+        &chars,
+        &plain,
+        event.isARepeat(),
+        event.keyCode(),
+    )
+}
 
 impl TermView {
     fn mouse(&self, event: &NSEvent, button: Option<(c_int, c_int)>) {

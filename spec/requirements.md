@@ -17,13 +17,13 @@ Priority: **Must** (required) · **Should** (important, may follow later) · **C
 
 ### 1.2 Terminals
 
-| ID    | Name                   | Requirement                                                                                                                                                         | Source | Priority | Verified by        |
-| ----- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- | ------------------ |
-| FR-04 | Open in Ghostty        | A project shall open in a new Ghostty tab in its folder: a plain terminal, with Claude, or with Claude in a sandbox; Ghostty shall be started if it isn't running.  | UC-02  | Must     | UC-02.1–3, UC-02.5 |
-| FR-05 | Resume                 | An earlier session shall be resumed in a new Ghostty tab in its project's folder.                                                                                   | UC-02  | Must     | UC-02.4            |
-| FR-06 | Permission             | Without permission to control Ghostty, the app shall say so and open the system settings for it.                                                                    | UC-02  | Must     | UC-02.6            |
-| FR-07 | To the terminal        | Clicking a session shall bring its Ghostty tab to the front, or say that its tab is unknown.                                                                        | UC-03  | Must     | UC-03.7            |
-| FR-17 | Terminal in the window | On the Mac, Yggdrasil's window shall show a terminal pane at its right, drawn by Ghostty with the person's Ghostty settings, taking the keyboard when clicked into. | UC-02  | Should   | UC-02.7            |
+| ID    | Name                   | Requirement                                                                                                                                                                                                                          | Source | Priority | Verified by        |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | -------- | ------------------ |
+| FR-04 | Open in Ghostty        | A project shall open in a new Ghostty tab in its folder: a plain terminal, with Claude, or with Claude in a sandbox; Ghostty shall be started if it isn't running.                                                                   | UC-02  | Must     | UC-02.1–3, UC-02.5 |
+| FR-05 | Resume                 | An earlier session shall be resumed in a new Ghostty tab in its project's folder.                                                                                                                                                    | UC-02  | Must     | UC-02.4            |
+| FR-06 | Permission             | Without permission to control Ghostty, the app shall say so and open the system settings for it.                                                                                                                                     | UC-02  | Must     | UC-02.6            |
+| FR-07 | To the terminal        | Clicking a session shall bring its Ghostty tab to the front, or say that its tab is unknown.                                                                                                                                         | UC-03  | Must     | UC-03.7            |
+| FR-17 | Terminal in the window | On the Mac, Yggdrasil's window shall show a terminal pane at its right, drawn by Ghostty with the person's Ghostty settings, taking the keyboard when clicked into, with every way of typing the Mac has (dead keys, input methods). | UC-02  | Should   | UC-02.7–8          |
 
 ### 1.3 Sessions and agents
 

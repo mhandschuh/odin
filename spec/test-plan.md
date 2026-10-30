@@ -55,6 +55,7 @@ them too, and they are met only when the test passes and the newest hand check p
 | UC-02.3   | Claude started in a sandbox                        |
 | UC-02.4   | the session continued                              |
 | UC-02.7   | the terminal pane drawn by Ghostty, and typed into |
+| UC-02.8   | dead keys and an input method in the terminal pane |
 | UC-03.1   | the state of a real session                        |
 | UC-03.2   | a real permission request                          |
 | UC-03.3   | a real subagent                                    |
