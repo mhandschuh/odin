@@ -5,6 +5,13 @@ without a test, listed in status.md under *Next hand-check run*), each ✓ passe
 was seen. When a run fails, the fix gets a new run, on the same day too. Only added to, never rewritten; a
 criterion's newest result counts. How and when to test: test-plan.md.
 
+## 2026-10-30 · run 2 · b146c8d (./x run) on the Mac
+
+| Criterion | Result | Seen                                                                                                           |
+| --------- | :----: | -------------------------------------------------------------------------------------------------------------- |
+| UC-02.7   | ✓      | Typing, Ctrl-C and Ctrl-L work; no problems seen.                                                              |
+| UC-02.8   | —      | U.S. International " and then o gives ö; emoji from the character viewer arrive. An input method wasn't tried. |
+
 ## 2026-10-30 · run 1 · in use · 2024c88 (./x run) on the Mac
 
 | Criterion | Result | Seen                                                |
