@@ -49,10 +49,10 @@ case "${1:-help}" in
     ;;
   ghostty)
     # libghostty for the terminal pane (ADR 0004), on the Mac: Ghostty's source at a pinned tag, built with Zig,
-    # without Sentry (Ghostty's macOS default) and without its app. Prints the folder holding libghostty.a.
+    # without Sentry (Ghostty's macOS default) and without its app. Prints the library's path (1.4: libghostty-internal.a).
     tag=v1.4.0 src="$target_dir/ghostty-$tag"
     # Not built yet is no failure: then the folder is missing and find says so.
-    lib=$(find "$src/macos/GhosttyKit.xcframework" -name libghostty.a 2>/dev/null | head -1 || true)
+    lib=$(find "$src/macos/GhosttyKit.xcframework" -name 'lib*.a' 2>/dev/null | head -1 || true)
     if [[ -z "$lib" ]]; then
       command -v zig >/dev/null || { echo "ghostty: needs Zig 0.17 or later (brew install zig)" >&2; exit 1; }
       zv=$(zig version)
@@ -66,14 +66,14 @@ case "${1:-help}" in
       [[ -d "$src" ]] || git clone -q --depth 1 --branch "$tag" https://github.com/ghostty-org/ghostty "$src" >&2
       (cd "$src" && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native \
         -Demit-macos-app=false -Dsentry=false >&2)
-      lib=$(find "$src/macos/GhosttyKit.xcframework" -name libghostty.a | head -1)
-      [[ -n "$lib" ]] || { echo "ghostty: the build made no libghostty.a" >&2; exit 1; }
+      lib=$(find "$src/macos/GhosttyKit.xcframework" -name 'lib*.a' | head -1 || true)
+      [[ -n "$lib" ]] || { echo "ghostty: the build left no library in $src/macos/GhosttyKit.xcframework" >&2; exit 1; }
     fi
-    dirname "$lib"
+    echo "$lib"
     ;;
   bundle)
     if [[ "$(uname)" == Darwin ]]; then
-      GHOSTTY_LIB_DIR=$("$0" ghostty); export GHOSTTY_LIB_DIR
+      GHOSTTY_LIB=$("$0" ghostty); export GHOSTTY_LIB
     fi
     cargo build -p yggdrasil --release ${2:+--target $2}
     app="$target_dir/Yggdrasil.app"

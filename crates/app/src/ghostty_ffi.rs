@@ -126,8 +126,8 @@ pub struct RuntimeConfig {
     pub close_surface_cb: Option<extern "C" fn(*mut c_void, bool)>,
 }
 
+// Linked by build.rs, under the name Ghostty's build gives the library.
 #[cfg(target_os = "macos")]
-#[link(name = "ghostty", kind = "static")]
 unsafe extern "C" {
     pub fn ghostty_init(argc: usize, argv: *mut *mut c_char) -> c_int;
     pub fn ghostty_config_new() -> Config;
