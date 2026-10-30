@@ -481,7 +481,7 @@ fn drop_line(ui: &egui::Ui, rect: Rect, depth: usize, top: bool) {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = &ui.ctx().clone();
         while let Ok(msg) = self.rx.try_recv() {
             self.handle(msg);
@@ -519,7 +519,19 @@ impl eframe::App for App {
         }
         let mut acts: Vec<Act> = Vec::new();
         let p = theme::current(ctx);
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::same(8))).show(ui, |ui| {
+        // A click into the tree takes the keys back from the terminal pane (UC-02.7); clicks into the pane don't reach
+        // egui, the pane's own view takes them.
+        #[cfg(target_os = "macos")]
+        if ctx.input(|i| i.pointer.any_pressed()) {
+            crate::terminal::release_focus();
+        }
+        egui::Panel::left("tree")
+            .resizable(true)
+            .default_size(320.0)
+            .min_size(240.0)
+            .max_size(560.0)
+            .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::same(8)))
+            .show(ui, |ui| {
             if cfg!(target_os = "macos") {
                 ui.add_space(22.0);
             }
@@ -577,6 +589,19 @@ impl eframe::App for App {
                     acts.push(Act::Move { from: (*from).clone(), into: vec![], index: self.tree.nodes.len() });
                 }
             });
+        });
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(Color32::from_rgb(24, 24, 26))).show(ui, |ui| {
+            let rect = ui.max_rect();
+            #[cfg(target_os = "macos")]
+            let shown = crate::terminal::show(frame, ctx, rect, &dirs::home_dir().unwrap_or_default());
+            #[cfg(not(target_os = "macos"))]
+            let shown: Result<(), String> = {
+                let _ = frame;
+                Err("The terminal pane is drawn by Ghostty, on the Mac.".into())
+            };
+            if let Err(e) = shown {
+                ui.painter().text(rect.center(), Align2::CENTER_CENTER, e, theme::font(13.0), p.tertiary);
+            }
         });
         for a in acts {
             self.apply(a);

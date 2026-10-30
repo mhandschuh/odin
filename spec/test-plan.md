@@ -47,20 +47,21 @@ red, even when its tests pass, until a newer ✓.
 Criteria whose logic a test proves, but whose result only a person on the device can see. Each run checks
 them too, and they are met only when the test passes and the newest hand check passed.
 
-| Criterion | Seen only on the device                   |
-| --------- | ----------------------------------------- |
-| UC-01.3   | dragging in the tree                      |
-| UC-02.1   | the Ghostty tab in the right folder       |
-| UC-02.2   | Claude started in the tab                 |
-| UC-02.3   | Claude started in a sandbox               |
-| UC-02.4   | the session continued                     |
-| UC-03.1   | the state of a real session               |
-| UC-03.2   | a real permission request                 |
-| UC-03.3   | a real subagent                           |
-| UC-03.4   | a real session ending                     |
-| UC-03.6   | a real sandbox session                    |
-| UC-05.1   | a real session reporting after connecting |
-| UC-05.3   | a real sandbox session reporting          |
+| Criterion | Seen only on the device                            |
+| --------- | -------------------------------------------------- |
+| UC-01.3   | dragging in the tree                               |
+| UC-02.1   | the Ghostty tab in the right folder                |
+| UC-02.2   | Claude started in the tab                          |
+| UC-02.3   | Claude started in a sandbox                        |
+| UC-02.4   | the session continued                              |
+| UC-02.7   | the terminal pane drawn by Ghostty, and typed into |
+| UC-03.1   | the state of a real session                        |
+| UC-03.2   | a real permission request                          |
+| UC-03.3   | a real subagent                                    |
+| UC-03.4   | a real session ending                              |
+| UC-03.6   | a real sandbox session                             |
+| UC-05.1   | a real session reporting after connecting          |
+| UC-05.3   | a real sandbox session reporting                   |
 
 ## Release criteria
 
