@@ -1,5 +1,5 @@
 use crate::prefs::Prefs;
-use crate::terminal::{self, Cmd};
+use crate::terminal::{self, Cmd, TermEvent};
 use crate::{paths, system, theme, watch::Watch};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, CornerRadius, Rect, Sense, Stroke, vec2};
@@ -14,6 +14,7 @@ use yggdrasil_core::hook;
 use yggdrasil_core::panes::Terms;
 use yggdrasil_core::sbx::Sandbox;
 use yggdrasil_core::tree::{self, At, Node, Tree};
+use yggdrasil_core::{procs, title};
 
 const ROW: f32 = 26.0;
 const INDENT: f32 = 16.0;
@@ -306,8 +307,8 @@ impl App {
             Msg::Focused(result) => match result {
                 Ok(r) if r == "none" => {
                     self.message = Some(Message {
-                        title: "Which tab is it?".into(),
-                        body: "Yggdrasil can't tell which Ghostty tab this session runs in, so it brought Ghostty to the front.".into(),
+                        title: "Where is this session?".into(),
+                        body: "Yggdrasil can't tell which terminal this session runs in.".into(),
                         automation: false,
                     })
                 }
@@ -321,8 +322,7 @@ impl App {
                 let in_front = match self.in_term.get(&session) {
                     Some(t) => self.window_focused && self.terms.shown() == Some(*t),
                     None => {
-                        !s.tty.is_empty()
-                            && ttys.lines().any(|t| ghostty::normal_tty(t) == ghostty::normal_tty(&s.tty))
+                        !s.tty.is_empty() && ttys.lines().any(|t| ghostty::normal_tty(t) == ghostty::normal_tty(&s.tty))
                     }
                 };
                 let change = Change::StartedWaiting(session.clone(), wait);
@@ -452,6 +452,39 @@ impl App {
         for t in self.terms.list.iter_mut().filter(|t| t.tty.is_empty()) {
             t.tty = terminal::tty(t.id);
         }
+        let mut waiting = Vec::new();
+        let mut sandboxes = Vec::new();
+        for (id, event) in terminal::take_events() {
+            let Some(t) = self.terms.get_mut(id) else { continue };
+            match event {
+                TermEvent::Title(text) => {
+                    let was = t.claude;
+                    t.claude = match (title::state(&text), was) {
+                        (None, _) => None,
+                        // Asking stops the spinner: still waiting until Claude works again.
+                        (Some(State::Idle), Some((State::Waiting, w))) => Some((State::Waiting, w)),
+                        (Some(state), _) => Some((state, None)),
+                    };
+                    // Claude just started in it: in a sandbox (sbx) started by hand? (UC-05.6)
+                    if was.is_none() && t.claude.is_some() && !t.sbx && procs::runs_sbx(&system::programs_on(&t.tty)) {
+                        t.sbx = true;
+                        sandboxes.extend(t.project.clone());
+                    }
+                }
+                TermEvent::Notify(body) => {
+                    if t.claude.is_some() {
+                        let wait = title::wait(&body);
+                        t.claude = Some((State::Waiting, Some(wait)));
+                        waiting.push((id, wait));
+                    }
+                }
+            }
+        }
+        for p in sandboxes {
+            if !self.sandbox_projects().contains(&p) {
+                self.set_sandbox_sessions(&p, true);
+            }
+        }
         // With no terminal open, the pane shows a shell in the home folder (UC-02.7).
         if self.terms.shown().is_none() && terminal::failed().is_none() && !self.home_failed {
             self.open_term(None, Start::Terminal);
@@ -475,6 +508,30 @@ impl App {
                 self.terms.of_session(s, project.as_deref(), same).map(|t| (s.id.clone(), t))
             })
             .collect();
+        for (id, wait) in waiting {
+            self.notify_term(id, wait);
+        }
+    }
+
+    /// A terminal's Claude waits, seen in the terminal itself (UC-03.10): notified like a session (UC-04), unless a
+    /// session reported by Claude's settings runs in it and notifies already, or it's in front.
+    fn notify_term(&self, id: u64, wait: Wait) {
+        if !self.prefs.notifications
+            || self.in_term.values().any(|&t| t == id)
+            || (self.window_focused && self.terms.shown() == Some(id))
+        {
+            return;
+        }
+        let name = self.terms.get(id).and_then(|t| t.project.clone()).map(|p| Node::project(&p).label());
+        let title = format!("{} waits", name.unwrap_or_else(|| "Claude".into()));
+        let body = match wait {
+            Wait::Permission => "Claude asks for a permission.",
+            Wait::Answer => "Claude waits for your answer.",
+        };
+        #[cfg(target_os = "macos")]
+        crate::mac::notify(&format!("term-{id}"), &title, body);
+        #[cfg(not(target_os = "macos"))]
+        let _ = (title, body);
     }
 
     fn open_ghostty(&mut self, project: PathBuf, start: Start) {
@@ -492,11 +549,14 @@ impl App {
     }
 
     fn focus(&mut self, session: &str) {
-        if let Some(&t) = self.in_term.get(session) {
+        let term = session.strip_prefix("term-").and_then(|id| id.parse().ok());
+        if let Some(t) = term.or_else(|| self.in_term.get(session).copied()) {
             self.show_term(t);
             return;
         }
         let Some(s) = self.sessions.running.get(session) else { return };
+        // The app its terminal belongs to, from Claude's process; a sandbox reports a process of the sandbox.
+        let pid = if s.sandbox.is_empty() { s.pid } else { 0 };
         let id = self
             .tree
             .project_of(&s.cwd)
@@ -507,7 +567,25 @@ impl App {
         let tx = self.tx.clone();
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(Msg::Focused(system::osascript(&script)));
+            let app = (pid != 0)
+                .then(|| procs::app_of(pid, &system::processes()))
+                .flatten()
+                .filter(|a| a.file_name().is_some_and(|n| n != "Yggdrasil.app"));
+            let result = match &app {
+                // Another terminal app (Orca, Terminal): only the app can be brought to the front.
+                Some(a) if a.file_name().is_some_and(|n| n != "Ghostty.app") => {
+                    system::activate(a);
+                    Ok("ok".to_string())
+                }
+                _ => match system::osascript(&script) {
+                    Ok(r) if r == "none" && app.is_some() => {
+                        app.iter().for_each(|a| system::activate(a));
+                        Ok("ok".to_string())
+                    }
+                    r => r,
+                },
+            };
+            let _ = tx.send(Msg::Focused(result));
             ctx.request_repaint();
         });
     }
@@ -1036,6 +1114,17 @@ impl App {
                 label(ui, rect, depth + 1, "", p.tertiary, "No sessions yet", p.tertiary);
             }
             let now = SystemTime::now();
+            if !list.is_empty() {
+                let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW - 6.0), Sense::hover());
+                let x = rect.min.x + 30.0 + (depth + 1) as f32 * INDENT;
+                ui.painter().text(
+                    egui::pos2(x, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    "Earlier sessions",
+                    theme::font(11.0),
+                    p.tertiary,
+                );
+            }
             for e in list {
                 let (rect, resp) = row(ui, depth + 1, egui::Id::new(("earlier", &e.id)));
                 let text = format!("{}  ·  {}", short(&e.id), history::ago(e.last, now));
@@ -1063,11 +1152,7 @@ impl App {
             State::Waiting => WAITING,
             State::Idle => p.tertiary,
         };
-        let what = match (s.state, s.wait) {
-            (State::Waiting, Some(Wait::Permission)) => "waiting for a permission",
-            (State::Waiting, _) => "waiting for you",
-            (st, _) => st.word(),
-        };
+        let what = state_words(s.state, s.wait);
         let place = if s.sandbox.is_empty() { String::new() } else { "  ·  sandbox".into() };
         let text = format!("{}  ·  {what}{place}", short(&s.id));
         label(ui, rect, depth, "", color, &text, p.text);
@@ -1109,8 +1194,29 @@ impl App {
         if self.terms.shown() == Some(id) {
             ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
         }
-        label(ui, rect, depth, icon::TERMINAL_WINDOW, p.secondary, "Terminal", p.text);
-        let resp = resp.on_hover_text("Show it");
+        let t = self.terms.get(id);
+        let claude = t.and_then(|t| t.claude);
+        let sandbox = if t.is_some_and(|t| t.sbx) { "  ·  sandbox" } else { "" };
+        if let Some((state, wait)) = claude {
+            // Claude's state from the terminal itself (UC-03.10).
+            let color = match state {
+                State::Working => p.accent,
+                State::Waiting => WAITING,
+                State::Idle => p.tertiary,
+            };
+            let text = format!("Claude  ·  {}{sandbox}", state_words(state, wait));
+            label(ui, rect, depth, "", color, &text, p.text);
+            ui.painter().text(
+                egui::pos2(rect.min.x + 16.0 + depth as f32 * INDENT, rect.center().y),
+                Align2::CENTER_CENTER,
+                egui_phosphor::fill::CIRCLE,
+                theme::fill_font(10.0),
+                color,
+            );
+        } else {
+            label(ui, rect, depth, icon::TERMINAL_WINDOW, p.secondary, "Terminal", p.text);
+        }
+        let resp = resp.on_hover_text("Show its terminal");
         if resp.clicked() {
             acts.push(Act::Show(id));
         }
@@ -1245,6 +1351,14 @@ impl App {
         if close {
             self.message = None;
         }
+    }
+}
+
+fn state_words(state: State, wait: Option<Wait>) -> &'static str {
+    match (state, wait) {
+        (State::Waiting, Some(Wait::Permission)) => "waiting for a permission",
+        (State::Waiting, _) => "waiting for you",
+        (st, _) => st.word(),
     }
 }
 

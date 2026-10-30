@@ -9,6 +9,11 @@ pub type Config = *mut c_void;
 pub type Surface = *mut c_void;
 
 pub const PLATFORM_MACOS: c_int = 1;
+pub const TARGET_SURFACE: c_int = 1;
+
+// ghostty_action_tag_e (v1.4.0), counted from the header.
+pub const ACTION_DESKTOP_NOTIFICATION: c_int = 32;
+pub const ACTION_SET_TITLE: c_int = 33;
 pub const CONTEXT_WINDOW: c_int = 0;
 
 pub const ACTION_RELEASE: c_int = 0;

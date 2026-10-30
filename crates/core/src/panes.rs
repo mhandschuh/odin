@@ -1,6 +1,6 @@
 //! The terminals in the pane of Yggdrasil's window (UC-02, ADR 0005): which one shows, what shows when one closes,
 //! and which session runs in which. Free of the platform: the Mac draws them (the app's terminal.rs).
-use crate::events::Session;
+use crate::events::{Session, State, Wait};
 use crate::ghostty::{Start, normal_tty};
 use std::path::{Path, PathBuf};
 
@@ -12,6 +12,10 @@ pub struct Term {
     pub start: Start,
     /// Its terminal device, once its shell runs.
     pub tty: String,
+    /// Claude's state as its terminal shows it (UC-03.10); none while Claude doesn't run in it.
+    pub claude: Option<(State, Option<Wait>)>,
+    /// A sandbox (sbx) was seen running in it.
+    pub sbx: bool,
 }
 
 #[derive(Debug, Default)]
@@ -27,7 +31,8 @@ impl Terms {
     pub fn open(&mut self, project: Option<PathBuf>, start: Start) -> u64 {
         self.next += 1;
         let id = self.next;
-        self.list.push(Term { id, project, start, tty: String::new() });
+        let sbx = start == Start::Sandbox;
+        self.list.push(Term { id, project, start, tty: String::new(), claude: None, sbx });
         self.show(id);
         id
     }
@@ -57,8 +62,8 @@ impl Terms {
     }
 
     /// The terminal `s` runs in. A local session is found by its terminal device; a sandbox session reports the
-    /// sandbox's device, so it's found among the sandbox terminals opened for its project: the oldest session in the
-    /// oldest terminal. `same_project` are the running sessions of `s`'s project, `s` among them.
+    /// sandbox's device, so it's found among its project's terminals with a sandbox: the oldest session in the oldest
+    /// terminal. `same_project` are the running sessions of `s`'s project, `s` among them.
     pub fn of_session(&self, s: &Session, project: Option<&Path>, same_project: &[&Session]) -> Option<u64> {
         if s.sandbox.is_empty() {
             let tty = normal_tty(&s.tty);
@@ -71,11 +76,7 @@ impl Terms {
         let mut sandboxed: Vec<&Session> = same_project.iter().copied().filter(|o| !o.sandbox.is_empty()).collect();
         sandboxed.sort_by(|a, b| (a.since, &a.id).cmp(&(b.since, &b.id)));
         let nth = sandboxed.iter().position(|o| o.id == s.id)?;
-        self.list
-            .iter()
-            .filter(|t| t.start == Start::Sandbox && t.project.as_deref() == Some(project))
-            .nth(nth)
-            .map(|t| t.id)
+        self.list.iter().filter(|t| t.sbx && t.project.as_deref() == Some(project)).nth(nth).map(|t| t.id)
     }
 }
 
@@ -139,18 +140,19 @@ mod tests {
     }
 
     #[test]
-    fn uc_03_7_sandbox_sessions_are_found_in_the_sandbox_terminals_of_their_project_in_order() {
+    fn uc_03_7_sandbox_sessions_are_found_in_the_terminals_with_a_sandbox_of_their_project_in_order() {
         let mut t = Terms::default();
         let _local = t.open(Some("/p/vesta".into()), Start::Claude);
         let first = t.open(Some("/p/vesta".into()), Start::Sandbox);
         let _other = t.open(Some("/p/moneta".into()), Start::Sandbox);
-        let second = t.open(Some("/p/vesta".into()), Start::Sandbox);
+        let by_hand = t.open(Some("/p/vesta".into()), Start::Terminal);
+        t.get_mut(by_hand).unwrap().sbx = true;
         let old = session("b", "pts/0", "claude-vesta", 10);
         let new = session("a", "pts/0", "claude-vesta", 20);
         let local = session("c", "ttys001", "", 5);
         let all = [&new, &local, &old];
         let vesta = Some(Path::new("/p/vesta"));
         assert_eq!(t.of_session(&old, vesta, &all), Some(first));
-        assert_eq!(t.of_session(&new, vesta, &all), Some(second));
+        assert_eq!(t.of_session(&new, vesta, &all), Some(by_hand));
     }
 }

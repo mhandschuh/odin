@@ -3,5 +3,7 @@ pub mod ghostty;
 pub mod history;
 pub mod hook;
 pub mod panes;
+pub mod procs;
 pub mod sbx;
+pub mod title;
 pub mod tree;

@@ -10,6 +10,16 @@ pub enum Cmd {
     Settings,
 }
 
+#[allow(dead_code)]
+pub enum TermEvent {
+    Title(String),
+    Notify(String),
+}
+
+pub fn take_events() -> Vec<(u64, TermEvent)> {
+    Vec::new()
+}
+
 pub fn failed() -> Option<String> {
     Some("The terminal pane is drawn by Ghostty, on the Mac.".into())
 }

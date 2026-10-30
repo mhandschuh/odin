@@ -57,16 +57,15 @@ end tell"#
     )
 }
 
-/// Brings the terminal with this tty (or, when none has it, this id) to the front; "ok" or "none".
+/// Brings the terminal with this tty (or, when none has it, this id) to the front; "ok", or "none" without bringing
+/// anything to the front (and without starting Ghostty).
 pub fn focus(tty: &str, id: &str) -> String {
     format!(
-        r#"tell application "Ghostty"
+        r#"if application "Ghostty" is not running then return "none"
+tell application "Ghostty"
   set ts to (every terminal whose tty is {tty} or tty is {dev})
   if ts is {{}} then set ts to (every terminal whose id is {id})
-  if ts is {{}} then
-    activate
-    return "none"
-  end if
+  if ts is {{}} then return "none"
   focus (item 1 of ts)
   activate
   return "ok"

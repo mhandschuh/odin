@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use yggdrasil_core::ghostty::{Failure, failure};
 use yggdrasil_core::sbx::{Sandbox, parse};
@@ -40,6 +40,33 @@ pub fn has_sbx() -> bool {
 pub fn sandboxes() -> Option<Vec<Sandbox>> {
     let out = Command::new(sbx()?).arg("ls").output().ok()?;
     out.status.success().then(|| parse(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Every process with its parent and program, for the app a session runs in (UC-03.7).
+pub fn processes() -> String {
+    Command::new("ps")
+        .args(["-axo", "pid=,ppid=,comm="])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// The programs running on a terminal device (UC-05.6).
+pub fn programs_on(tty: &str) -> String {
+    let tty = yggdrasil_core::ghostty::normal_tty(tty);
+    if tty.is_empty() {
+        return String::new();
+    }
+    Command::new("ps")
+        .args(["-t", &tty, "-o", "comm="])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// Brings a running app to the front.
+pub fn activate(app: &Path) {
+    let _ = Command::new("open").arg(app).spawn();
 }
 
 /// Whether a process still runs (signal 0 checks without sending anything).

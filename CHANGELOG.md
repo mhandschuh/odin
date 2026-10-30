@@ -5,6 +5,12 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- **Claude's state in every terminal of the window:** Claude started by hand, also inside a sandbox (`sbx run`),
+  shows as working, waiting or idle, read from the terminal itself; it notifies when it waits. Starting a sandbox by
+  hand turns on *Sandbox Sessions* for the project, so later sessions there report their agents too.
+- **Sessions in other terminal apps:** clicking a session that runs in Orca or Terminal brings that app to the front,
+  instead of a random Ghostty window; where Yggdrasil can't tell, it says so.
+- **Earlier sessions** have a heading in the tree.
 - **Projects open in the window:** Terminal, Claude, Claude in a sandbox and Resume open a terminal in the pane on the
   right; click a session or a *Terminal* row in the tree to show its terminal. ⌘T opens another terminal in the shown
   one's project, ⌘W closes it, ⌘1 to ⌘9 switch. *Open in Ghostty* in a project's menu still opens Ghostty's own window.

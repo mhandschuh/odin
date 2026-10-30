@@ -470,8 +470,45 @@ extern "C" fn wakeup(_: *mut c_void) {
     }
 }
 
-extern "C" fn action(_: g::App, _: g::Target, _: g::Action) -> bool {
-    false
+/// What a terminal tells about the program in it: its title, and notifications it sends (UC-03.10).
+pub enum TermEvent {
+    Title(String),
+    Notify(String),
+}
+
+/// Ghostty may report from its own threads: collected here, taken on the main thread (`take_events`).
+static EVENTS: std::sync::Mutex<Vec<(usize, TermEvent)>> = std::sync::Mutex::new(Vec::new());
+
+fn text_at(p: u64) -> Option<String> {
+    let p = p as *const c_char;
+    (!p.is_null()).then(|| unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().into_owned())
+}
+
+extern "C" fn action(_: g::App, target: g::Target, action: g::Action) -> bool {
+    if target.tag != g::TARGET_SURFACE {
+        return false;
+    }
+    let event = match action.tag {
+        g::ACTION_SET_TITLE => text_at(action.action[0]).map(TermEvent::Title),
+        // Shown by Yggdrasil instead, unless the terminal is in front (UC-04).
+        g::ACTION_DESKTOP_NOTIFICATION => Some(TermEvent::Notify(text_at(action.action[1]).unwrap_or_default())),
+        _ => None,
+    };
+    let Some(event) = event else { return false };
+    if let Ok(mut e) = EVENTS.lock() {
+        e.push((target.target as usize, event));
+    }
+    wakeup(std::ptr::null_mut());
+    true
+}
+
+/// The terminals' titles and notifications since the last frame.
+pub fn take_events() -> Vec<(u64, TermEvent)> {
+    let events = EVENTS.lock().map(|mut e| std::mem::take(&mut *e)).unwrap_or_default();
+    PANES.with(|p| {
+        let p = p.borrow();
+        events.into_iter().filter_map(|(s, e)| p.iter().find(|p| p.surface as usize == s).map(|p| (p.id, e))).collect()
+    })
 }
 
 extern "C" fn read_clipboard(
