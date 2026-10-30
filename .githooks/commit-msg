@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Shared hook (source: rea/tools/githooks, copied by `../x hooks`): conventional commit subjects only.
+re='^(feat|fix|perf|refactor|test|docs|build|ci|chore|style|revert)(\([a-z0-9-]+\))?!?: .{1,72}$'
+head -1 "$1" | grep -Eq "$re" && exit 0
+echo "commit-msg: not a conventional commit: $(head -1 "$1")" >&2
+echo "  e.g. feat(search): add departures, fix: keep dock order, docs: update README" >&2
+exit 1

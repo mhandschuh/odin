@@ -1,0 +1,42 @@
+# UC-03: Follow the running agents
+
+**Goal:** See at a glance, for every project, which Claude sessions run, what each is doing, and which agents they
+started; and get to a session's terminal in one click.
+
+**Primary actor:** Person
+
+**Supporting actors:** Claude Code (reports its steps), Ghostty (brings the terminal to the front)
+
+**Trigger:** The person wants to know where the work stands.
+
+**Preconditions:** Yggdrasil connected to Claude Code (UC-05).
+
+## Main flow
+
+1. The tree shows under each project its running sessions, each with its state: working, waiting, idle.
+2. Under a session, its running agents, each with its kind.
+3. The person clicks a session: its Ghostty tab comes to the front.
+4. Below the running sessions, the project's earlier sessions, newest first, to resume (UC-02.4).
+
+## Extensions
+
+- 1a. A session started outside Yggdrasil (in any terminal): it shows the same way (UC-03.5).
+- 1b. A session runs in a sandbox: it shows under its project, marked as in a sandbox (UC-03.6).
+- 1c. A session's terminal was closed or Claude quit without saying so: the session shows as ended (UC-03.4).
+- 3a. The session's terminal isn't a Ghostty tab Yggdrasil knows: Ghostty comes to the front, and Yggdrasil says it can't tell which tab (UC-03.7).
+
+## Success guarantee
+
+The tree shows every running session and agent, with a state no more than 2 seconds old.
+
+## Acceptance criteria
+
+- **UC-03.1** Given a session of *vesta* that Alice has just given a prompt, then within 2 seconds the tree shows the session under *vesta* as *working*; when Claude finishes its answer, as *idle*.
+- **UC-03.2** Given a working session, when Claude asks for a permission or for Alice's answer, then the tree shows it as *waiting* within 2 seconds; when Alice answers and Claude goes on, as *working* again.
+- **UC-03.3** Given a working session, when it starts a subagent of the kind *Explore*, then the tree shows *Explore* under the session within 2 seconds; when the agent finishes, it disappears from under the session.
+- **UC-03.4** Given a running session, when its Claude process ends (the person quits it, closes the tab, or it crashes), then the session leaves the running sessions within 2 seconds and is listed among the earlier sessions.
+- **UC-03.5** Given Claude started in a terminal Yggdrasil didn't open, in the folder of the project *vesta* or a folder inside it, then its session shows under *vesta* like the others.
+- **UC-03.6** Given Claude running in a sandbox of the project *vesta*, then its session shows under *vesta*, marked as in a sandbox, with its state and agents like the others; when the sandbox stops, the session shows as ended.
+- **UC-03.7** Given a session in a Ghostty tab Yggdrasil opened, when Alice clicks it in the tree, then that tab comes to the front; for a session in a terminal Yggdrasil doesn't know, Ghostty comes to the front and Yggdrasil says it can't tell which tab.
+- **UC-03.8** Given earlier sessions of *vesta*, then they are listed under *vesta*'s running sessions, newest first, each with when it was last active, at most 10.
+- **UC-03.9** Given a session started in a folder that is in no project, then it shows under *Other sessions* at the end of the tree.

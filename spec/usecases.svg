@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 380" role="img" aria-label="Yggdrasil use-case diagram">
+<style>
+text { fill: #24201b; font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; }
+.box { fill: none; stroke: #6d655b; stroke-width: 1.5; } .title { font-weight: 700; font-size: 15px; }
+.edge { stroke: #6d655b; stroke-width: 1.2; } .rel { stroke: #6d655b; stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+.stereo { font-size: 11px; fill: #6d655b; } .aname { font-weight: 650; }
+.actor { stroke: #24201b; stroke-width: 2; fill: none; }
+.u-red { fill: #f7e3e0; stroke: #b8483e; stroke-width: 1.5; } .u-half { fill: #f8ecd2; stroke: #a66a00; stroke-width: 1.5; }
+.u-green { fill: #e1f1e6; stroke: #2f7d4f; stroke-width: 1.5; } .head { fill: #6d655b; }
+@media (prefers-color-scheme: dark) {
+  text { fill: #ece6dc; } .box, .edge, .rel { stroke: #a39a8c; } .stereo { fill: #a39a8c; } .actor { stroke: #ece6dc; }
+  .u-red { fill: #3c1f1c; stroke: #f09088; } .u-half { fill: #3a2c12; stroke: #f0bd5c; } .u-green { fill: #183324; stroke: #7fd3a0; }
+  .head { fill: #a39a8c; } }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker></defs>
+<rect x="230" y="20" width="600" height="340" rx="10" class="box"/>
+<text x="530.0" y="44" text-anchor="middle" class="title">Yggdrasil</text>
+<line x1="140" y1="205" x2="280" y2="97" class="edge"/>
+<line x1="140" y1="205" x2="280" y2="151" class="edge"/>
+<line x1="650" y1="151" x2="920" y2="138" class="edge"/>
+<line x1="140" y1="205" x2="280" y2="205" class="edge"/>
+<line x1="650" y1="205" x2="920" y2="272" class="edge"/>
+<line x1="650" y1="205" x2="920" y2="138" class="edge"/>
+<line x1="140" y1="205" x2="280" y2="259" class="edge"/>
+<line x1="650" y1="259" x2="920" y2="272" class="edge"/>
+<line x1="140" y1="205" x2="280" y2="313" class="edge"/>
+<line x1="650" y1="313" x2="920" y2="272" class="edge"/>
+<path d="M620,245 C728,249 728,215 620,221" class="rel" marker-end="url(#arrow)"/><text x="718" y="236" text-anchor="start" class="stereo">«extend»</text>
+<ellipse cx="465.0" cy="97" rx="185.0" ry="20" class="u-half"/><text x="465.0" y="102" text-anchor="middle">UC-01 Arrange projects</text>
+<ellipse cx="465.0" cy="151" rx="185.0" ry="20" class="u-half"/><text x="465.0" y="156" text-anchor="middle">UC-02 Open a project in the terminal</text>
+<ellipse cx="465.0" cy="205" rx="185.0" ry="20" class="u-half"/><text x="465.0" y="210" text-anchor="middle">UC-03 Follow the running agents</text>
+<ellipse cx="465.0" cy="259" rx="185.0" ry="20" class="u-green"/><text x="465.0" y="264" text-anchor="middle">UC-04 Know when a session waits</text>
+<ellipse cx="465.0" cy="313" rx="185.0" ry="20" class="u-half"/><text x="465.0" y="318" text-anchor="middle">UC-05 Connect Claude Code to Yggdrasil</text>
+<circle cx="100" cy="183" r="11" class="actor"/><line x1="100" y1="194" x2="100" y2="217" class="actor"/><line x1="82" y1="203" x2="118" y2="203" class="actor"/><line x1="100" y1="217" x2="86" y2="235" class="actor"/><line x1="100" y1="217" x2="114" y2="235" class="actor"/><text x="100" y="253" text-anchor="middle" class="aname">Person</text>
+<circle cx="960" cy="116" r="11" class="actor"/><line x1="960" y1="126" x2="960" y2="150" class="actor"/><line x1="942" y1="136" x2="978" y2="136" class="actor"/><line x1="960" y1="150" x2="946" y2="168" class="actor"/><line x1="960" y1="150" x2="974" y2="168" class="actor"/><text x="960" y="186" text-anchor="middle" class="aname">Ghostty</text>
+<circle cx="960" cy="250" r="11" class="actor"/><line x1="960" y1="262" x2="960" y2="284" class="actor"/><line x1="942" y1="270" x2="978" y2="270" class="actor"/><line x1="960" y1="284" x2="946" y2="302" class="actor"/><line x1="960" y1="284" x2="974" y2="302" class="actor"/><text x="960" y="320" text-anchor="middle" class="aname">Claude Code</text>
+</svg>
