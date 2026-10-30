@@ -57,6 +57,12 @@ case "${1:-help}" in
       command -v zig >/dev/null || { echo "ghostty: needs Zig 0.17 or later (brew install zig)" >&2; exit 1; }
       zv=$(zig version)
       [[ "$(printf '%s\n' 0.17.0 "$zv" | sort -V | head -1)" == 0.17.0 ]] || { echo "ghostty: Zig $zv is too old, $tag needs 0.17 or later" >&2; exit 1; }
+      # Ghostty's shaders need Apple's Metal compiler: part of Xcode, a separate download since Xcode 26.
+      xcrun -sdk macosx metal -v >/dev/null 2>&1 || {
+        echo "ghostty: needs Xcode's Metal toolchain: xcodebuild -downloadComponent MetalToolchain" >&2
+        echo "  (with Xcode selected: xcode-select -p should show Xcode.app, not CommandLineTools)" >&2
+        exit 1
+      }
       [[ -d "$src" ]] || git clone -q --depth 1 --branch "$tag" https://github.com/ghostty-org/ghostty "$src" >&2
       (cd "$src" && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native \
         -Demit-macos-app=false -Dsentry=false >&2)
