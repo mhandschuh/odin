@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Nothing ends silently: a step that fails says where.
+trap 'echo "x: stopped at line $LINENO: $BASH_COMMAND" >&2' ERR
 cd "$(dirname "$0")"
 export PATH="$HOME/.cargo/bin:$PATH"
 
@@ -49,7 +51,8 @@ case "${1:-help}" in
     # libghostty for the terminal pane (ADR 0004), on the Mac: Ghostty's source at a pinned tag, built with Zig,
     # without Sentry (Ghostty's macOS default) and without its app. Prints the folder holding libghostty.a.
     tag=v1.4.0 src="$target_dir/ghostty-$tag"
-    lib=$(find "$src/macos/GhosttyKit.xcframework" -name libghostty.a 2>/dev/null | head -1)
+    # Not built yet is no failure: then the folder is missing and find says so.
+    lib=$(find "$src/macos/GhosttyKit.xcframework" -name libghostty.a 2>/dev/null | head -1 || true)
     if [[ -z "$lib" ]]; then
       command -v zig >/dev/null || { echo "ghostty: needs Zig 0.17 or later (brew install zig)" >&2; exit 1; }
       zv=$(zig version)
