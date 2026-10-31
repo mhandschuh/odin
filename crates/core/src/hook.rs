@@ -32,6 +32,11 @@ pub fn status_command() -> String {
     r#"sh "$HOME/Library/Application Support/Yggdrasil/statusline.sh""#.to_string()
 }
 
+/// The status line in a project's local settings: the script inside the project, which a sandbox sees too.
+pub fn project_status_command() -> String {
+    r#"sh "$CLAUDE_PROJECT_DIR/.claude/yggdrasil/statusline.sh""#.to_string()
+}
+
 /// Settings with Yggdrasil's status line in place of the person's, and theirs (to keep and to run) when it was
 /// another one; its padding stays.
 pub fn add_status(settings: &Value, command: &str) -> (Value, Option<Value>) {
@@ -256,13 +261,25 @@ pub fn connect_project(project: &Path) -> Result<(), Error> {
     std::fs::create_dir_all(&dir).map_err(|e| Error::Io(e.to_string()))?;
     std::fs::write(dir.join("hook.sh"), SCRIPT).map_err(|e| Error::Io(e.to_string()))?;
     std::fs::write(dir.join(".gitignore"), "*\n").map_err(|e| Error::Io(e.to_string()))?;
-    change(&settings, |s| add(s, &sandbox_command()))
+    std::fs::write(dir.join("statusline.sh"), STATUS_SCRIPT).map_err(|e| Error::Io(e.to_string()))?;
+    // The sandbox's limits come through its status line (ADR 0010); a status line the project has already stays.
+    change(&settings, |s| {
+        let s = add(s, &sandbox_command());
+        if s.get("statusLine").is_some() { s } else { add_status(&s, &project_status_command()).0 }
+    })
 }
 
 pub fn disconnect_project(project: &Path) -> Result<(), Error> {
-    change(&project.join(".claude/settings.local.json"), |s| remove(s, &sandbox_command()))?;
+    change(&project.join(".claude/settings.local.json"), |s| {
+        remove_status(&remove(s, &sandbox_command()), &project_status_command(), None)
+    })?;
     let _ = std::fs::remove_dir_all(project.join(".claude/yggdrasil"));
     Ok(())
+}
+
+/// Where the sandbox sessions of a project leave their limits.
+pub fn project_limits(project: &Path) -> PathBuf {
+    project.join(".claude/yggdrasil/limits.json")
 }
 
 /// Where the sandbox sessions of a project write their lines.
@@ -486,7 +503,11 @@ mod tests {
         let script = dir.join("statusline.sh");
         std::fs::write(&script, STATUS_SCRIPT).unwrap();
         let mut c = Command::new("sh");
-        c.arg(&script).env("YGGDRASIL_DIR", dir).stdin(Stdio::piped()).stdout(Stdio::piped());
+        c.arg(&script)
+            .env_remove("SANDBOX_NAME")
+            .env("YGGDRASIL_DIR", dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
         let mut child = c.spawn().unwrap();
         use std::io::Write;
         child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
@@ -516,6 +537,50 @@ mod tests {
         let e = tempfile::tempdir().unwrap();
         status(r#"{"session_id":"s1"}"#, e.path());
         assert!(!e.path().join("limits.json").exists());
+    }
+
+    #[test]
+    fn uc_06_7_a_sandbox_hands_its_limits_through_the_projects_status_line() {
+        let d = tempfile::tempdir().unwrap();
+        let project = d.path().join("vesta");
+        std::fs::create_dir(&project).unwrap();
+        connect_project(&project).unwrap();
+        let s = read(&project.join(".claude/settings.local.json")).unwrap().unwrap();
+        assert_eq!(s["statusLine"]["command"], project_status_command());
+        let script = project.join(".claude/yggdrasil/statusline.sh");
+        let input = r#"{"rate_limits":{"five_hour":{"used_percentage":14,"resets_at":1793470000},"seven_day":{"used_percentage":84,"resets_at":1793900000}}}"#;
+        let mac = d.path().join("mac");
+        std::fs::create_dir(&mac).unwrap();
+        std::fs::write(mac.join("own-statusline.sh"), "echo mine\n").unwrap();
+        let run = |env: &[(&str, &str)]| {
+            let mut c = Command::new("sh");
+            c.arg(&script).env_remove("SANDBOX_NAME").env("YGGDRASIL_DIR", &mac);
+            for (k, v) in env {
+                c.env(k, v);
+            }
+            let mut child = c.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+            child.wait_with_output().unwrap()
+        };
+        // In the sandbox: into the project, no status line of the person's run there.
+        let out = run(&[("SANDBOX_NAME", "vesta-claude"), ("CLAUDE_PROJECT_DIR", project.to_str().unwrap())]);
+        assert!(out.stdout.is_empty());
+        let l = crate::limits::from_status_line(&std::fs::read_to_string(project_limits(&project)).unwrap()).unwrap();
+        assert_eq!(l.meters.iter().map(|m| m.percent).collect::<Vec<_>>(), [14.0, 84.0]);
+        assert!(!mac.join("limits.json").exists());
+        // A Mac session in the project: like the user settings' status line, with the person's own.
+        let out = run(&[("CLAUDE_PROJECT_DIR", project.to_str().unwrap())]);
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "mine\n");
+        assert!(mac.join("limits.json").exists());
+        disconnect_project(&project).unwrap();
+        assert!(!project.join(".claude/settings.local.json").exists());
+        // A status line the project has of its own stays, also after disconnecting.
+        let own = serde_json::json!({ "statusLine": { "type": "command", "command": "echo project" } });
+        write(&project.join(".claude/settings.local.json"), &own).unwrap();
+        connect_project(&project).unwrap();
+        disconnect_project(&project).unwrap();
+        assert_eq!(read(&project.join(".claude/settings.local.json")).unwrap().unwrap(), own);
     }
 
     #[test]

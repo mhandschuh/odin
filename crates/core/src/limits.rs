@@ -103,6 +103,32 @@ pub fn merge(status: Option<&Limits>, usage: Option<&Limits>) -> Limits {
     Limits { meters, at: newer.map_or(0, |l| l.at) }
 }
 
+/// Older than this, numbers are shown as old (UC-06.5).
+pub const OLD: u64 = 15 * 60;
+
+/// The newest numbers of several sources (the Mac's and each sandbox's status line): each limit from the newest one
+/// that has it.
+pub fn newest(all: &[Limits]) -> Option<Limits> {
+    let mut sorted: Vec<&Limits> = all.iter().collect();
+    sorted.sort_by_key(|l| std::cmp::Reverse(l.at));
+    let mut meters: Vec<Meter> = Vec::new();
+    for l in &sorted {
+        for m in &l.meters {
+            if !meters.iter().any(|x| x.name == m.name) {
+                meters.push(m.clone());
+            }
+        }
+    }
+    meters.sort_by_key(|m| [FIVE_HOUR, SEVEN_DAY].iter().position(|n| *n == m.name).unwrap_or(2));
+    sorted.first().map(|l| Limits { meters, at: l.at })
+}
+
+/// Without the limits whose window has started over since: their numbers are wrong for sure (UC-06.5).
+pub fn current(mut l: Limits, now: u64) -> Limits {
+    l.meters.retain(|m| m.resets_at.is_none_or(|r| r > now));
+    l
+}
+
 /// Whether Anthropic is to be asked now: only while *Model limits* is on, and at most every 5 minutes.
 pub fn due(on: bool, last: Option<u64>, now: u64) -> bool {
     on && last.is_none_or(|l| now >= l + ASK_EVERY)
@@ -176,6 +202,24 @@ mod tests {
         assert_eq!(both.at, 200);
         assert_eq!(merge(None, Some(&usage)).meters.len(), 3);
         assert_eq!(merge(None, None), Limits::default());
+    }
+
+    #[test]
+    fn uc_06_5_a_limit_past_its_reset_is_left_out() {
+        let m = |name: &str, r: u64| Meter { name: name.into(), percent: 69.0, resets_at: Some(r) };
+        let l = Limits { meters: vec![m("5-hour", 100), m("7-day", 900)], at: 50 };
+        assert_eq!(current(l, 500).meters, vec![m("7-day", 900)]);
+    }
+
+    #[test]
+    fn uc_06_7_each_limit_from_the_newest_source_that_has_it() {
+        let m = |name: &str, p: f32| Meter { name: name.into(), percent: p, resets_at: None };
+        let mac = Limits { meters: vec![m("5-hour", 3.0), m("7-day", 69.0)], at: 100 };
+        let sandbox = Limits { meters: vec![m("7-day", 84.0)], at: 900 };
+        let n = newest(&[mac, sandbox]).unwrap();
+        assert_eq!(n.meters, vec![m("5-hour", 3.0), m("7-day", 84.0)]);
+        assert_eq!(n.at, 900);
+        assert_eq!(newest(&[]), None);
     }
 
     #[test]

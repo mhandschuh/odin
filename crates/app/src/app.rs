@@ -203,8 +203,15 @@ impl App {
         app
     }
 
+    /// The limits the status lines left: the Mac's and each sandbox project's (ADR 0010), the newest of each.
     fn read_limits(&mut self) {
-        self.status_limits = std::fs::read_to_string(paths::limits()).ok().and_then(|t| limits::from_status_line(&t));
+        let files = std::iter::once(paths::limits())
+            .chain(self.sandbox_projects().into_iter().map(|p| hook::project_limits(&p)));
+        let all: Vec<Limits> = files
+            .filter_map(|f| std::fs::read_to_string(f).ok())
+            .filter_map(|t| limits::from_status_line(&t))
+            .collect();
+        self.status_limits = limits::newest(&all);
     }
 
     /// Asks Anthropic for the models' limits when it's time (UC-06.3, NFR-03): only while turned on, every 5 minutes.
@@ -228,8 +235,10 @@ impl App {
     fn limits_bar(&self, ui: &mut egui::Ui) {
         let p = theme::current(ui.ctx());
         let usage = self.usage_limits.as_ref().filter(|_| self.prefs.model_limits);
-        let l = limits::merge(self.status_limits.as_ref(), usage);
         let now = now_secs();
+        let l = limits::current(limits::merge(self.status_limits.as_ref(), usage), now);
+        // Old numbers look old (UC-06.5): dimmed, with their age beside them.
+        let old = l.at != 0 && now.saturating_sub(l.at) >= limits::OLD;
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 18.0;
             if l.meters.is_empty() {
@@ -237,7 +246,13 @@ impl App {
             }
             for m in &l.meters {
                 let resets = m.resets_at.map(|r| format!("  ·  resets {}", clock(r, now, false))).unwrap_or_default();
-                let color = if m.percent >= limits::WARN { WAITING } else { p.secondary };
+                let color = if old {
+                    p.tertiary
+                } else if m.percent >= limits::WARN {
+                    WAITING
+                } else {
+                    p.secondary
+                };
                 let text = format!("{} {:.0}%{resets}", m.name, m.percent);
                 let r = ui.label(egui::RichText::new(text).size(11.5).color(color));
                 if let Some(at) = m.resets_at {
@@ -249,18 +264,18 @@ impl App {
                     ));
                 }
             }
+            if old {
+                let at = SystemTime::UNIX_EPOCH + Duration::from_secs(l.at);
+                ui.label(
+                    egui::RichText::new(format!("as of {}", history::ago(at, SystemTime::now())))
+                        .size(11.5)
+                        .color(p.tertiary),
+                );
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some(e) = self.usage_error.as_ref().filter(|_| self.prefs.model_limits) {
                     ui.label(egui::RichText::new("Model limits unavailable").size(11.5).color(p.tertiary))
                         .on_hover_text(e);
-                }
-                if l.at != 0 && now.saturating_sub(l.at) >= 120 {
-                    let at = SystemTime::UNIX_EPOCH + Duration::from_secs(l.at);
-                    ui.label(
-                        egui::RichText::new(format!("as of {}", history::ago(at, SystemTime::now())))
-                            .size(11.5)
-                            .color(p.tertiary),
-                    );
                 }
             });
         });

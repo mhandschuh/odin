@@ -8,6 +8,7 @@ release notes and gives it the version and date.
 - **Claude's limits at the bottom of the window:** the 5-hour and 7-day limits with the share used and when they
   start over, yellow from 80 %. Turn on *Limits per model* in the settings for Fable's week too: Yggdrasil then asks
   Anthropic every 5 minutes with your Claude login (the only network it uses). Your own Claude status line still shows.
+  Sandboxes with *Sandbox Sessions* hand their limits too; old numbers show dimmed with their age.
 - **Splits and tabs as in Ghostty:** ⌘D splits a terminal to the right, ⌘⇧D below, ⌘T opens a tab, ⌘W closes;
   move between splits, drag the dividers, even them out and zoom one, all with your Ghostty keybindings. New splits
   and tabs start in the folder you're in.

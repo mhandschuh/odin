@@ -76,6 +76,7 @@ them too, and they are met only when the test passes and the newest hand check p
 | UC-06.1   | the bar with real limits from Claude                        |
 | UC-06.3   | Fable's limit from Anthropic                                |
 | UC-06.4   | Alice's own status line still in Claude                     |
+| UC-06.7   | limits from a real sandbox                                  |
 
 ## Release criteria
 

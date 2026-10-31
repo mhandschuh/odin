@@ -11,3 +11,4 @@ One file per decision: context, decision, consequences. Never rewrite an accepte
 - [0007. Agents with their task, followed by their own steps](0007-agent-tasks.md)
 - [0008. Tabs and splits in the pane, driven by Ghostty's keybindings](0008-tabs-and-splits.md)
 - [0009. Claude's limits from its status line, the models' from Anthropic on request](0009-limits-bar.md)
+- [0010. Sandboxes hand their limits through the project's status line](0010-limits-from-sandboxes.md)
