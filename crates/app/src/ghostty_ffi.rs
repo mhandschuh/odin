@@ -12,9 +12,19 @@ pub const PLATFORM_MACOS: c_int = 1;
 pub const TARGET_SURFACE: c_int = 1;
 
 // ghostty_action_tag_e (v1.4.0), counted from the header.
+pub const ACTION_QUIT: c_int = 0;
+pub const ACTION_NEW_TAB: c_int = 2;
+pub const ACTION_NEW_SPLIT: c_int = 4;
+pub const ACTION_GOTO_TAB: c_int = 15;
+pub const ACTION_GOTO_SPLIT: c_int = 16;
+pub const ACTION_RESIZE_SPLIT: c_int = 18;
+pub const ACTION_EQUALIZE_SPLITS: c_int = 19;
+pub const ACTION_TOGGLE_SPLIT_ZOOM: c_int = 20;
 pub const ACTION_DESKTOP_NOTIFICATION: c_int = 32;
 pub const ACTION_SET_TITLE: c_int = 33;
 pub const CONTEXT_WINDOW: c_int = 0;
+pub const CONTEXT_TAB: c_int = 1;
+pub const CONTEXT_SPLIT: c_int = 2;
 
 pub const ACTION_RELEASE: c_int = 0;
 pub const ACTION_PRESS: c_int = 1;
@@ -154,6 +164,7 @@ unsafe extern "C" {
     pub fn ghostty_app_tick(app: App);
     pub fn ghostty_app_set_focus(app: App, focused: bool);
     pub fn ghostty_surface_config_new() -> SurfaceConfig;
+    pub fn ghostty_surface_inherited_config(surface: Surface, context: c_int) -> SurfaceConfig;
     pub fn ghostty_surface_new(app: App, config: *const SurfaceConfig) -> Surface;
     pub fn ghostty_surface_free(surface: Surface);
     pub fn ghostty_surface_tty_name(surface: Surface) -> GhosttyString;

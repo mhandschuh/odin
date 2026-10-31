@@ -58,6 +58,9 @@ them too, and they are met only when the test passes and the newest hand check p
 | UC-02.8   | dead keys and emoji in the terminal pane                    |
 | UC-02.9   | the Ghostty tab in the right folder                         |
 | UC-02.10  | a real shell ending                                         |
+| UC-02.13  | splits drawn by Ghostty, started in the folder              |
+| UC-02.14  | moving between real splits                                  |
+| UC-02.15  | dragging, evening out and zooming real splits               |
 | UC-03.7   | the terminal shown or brought to the front                  |
 | UC-03.10  | Claude's state in a pane terminal, by hand and in a sandbox |
 | UC-03.11  | real agents with their tasks                                |

@@ -11,7 +11,9 @@ Each word has one meaning in the spec and in the app.
 | **Agent**               | A subagent a session started, running until it finishes.                                                                                     |
 | **State**               | What a session is doing: *working*, *waiting* (for the person's answer or permission), *idle* (done, ready for the next prompt), or *ended*. |
 | **Terminal**            | A shell drawn by Ghostty: in the pane of Yggdrasil's window, or a tab or split of Ghostty's own window.                                      |
-| **Pane**                | The right side of Yggdrasil's window, showing one of its terminals at a time.                                                                |
+| **Pane**                | The right side of Yggdrasil's window, showing one tab of its terminals at a time.                                                            |
+| **Tab**                 | Terminals of the pane shown together, split side by side or one above the other.                                                             |
+| **Split**               | One of the terminals in a tab, with the room it takes there.                                                                                 |
 | **Sandbox**             | A Docker sandbox (sbx) running Claude for a project, isolated from the Mac.                                                                  |
 | **Earlier session**     | A session of the project that ended; it can be resumed.                                                                                      |
 | **Person (actor)**      | The user at their Mac.                                                                                                                       |

@@ -11,7 +11,7 @@ use yggdrasil_core::events::{self, Change, Feed, Session, Sessions, State, Wait}
 use yggdrasil_core::ghostty::{self, Failure, Start};
 use yggdrasil_core::history::{self, Earlier};
 use yggdrasil_core::hook;
-use yggdrasil_core::panes::Terms;
+use yggdrasil_core::panes::{self, Side, Terms};
 use yggdrasil_core::sbx::Sandbox;
 use yggdrasil_core::tree::{self, At, Node, Tree};
 use yggdrasil_core::{procs, title};
@@ -19,6 +19,8 @@ use yggdrasil_core::{procs, title};
 const ROW: f32 = 26.0;
 const INDENT: f32 = 16.0;
 const WAITING: Color32 = Color32::from_rgb(255, 204, 0);
+/// Between splits: the divider, and where it's grabbed.
+const GAP: f32 = 4.0;
 
 enum Msg {
     Files,
@@ -104,6 +106,8 @@ pub struct App {
     focus_term: Option<u64>,
     confirm: Option<Confirm>,
     window_focused: bool,
+    /// The pane's area in the last frame, for resizing splits by keys.
+    pane: panes::Rect,
     /// Session names from their transcripts, read on as they grow (UC-03.12).
     names: history::Names,
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -164,6 +168,7 @@ impl App {
             focus_term: None,
             confirm: None,
             window_focused: true,
+            pane: panes::Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 },
             names: history::Names::default(),
             quit_hooked: false,
             home_failed: false,
@@ -342,7 +347,7 @@ impl App {
             Msg::Front { session, wait, ttys } => {
                 let Some(s) = self.sessions.running.get(&session) else { return };
                 let in_front = match self.in_term.get(&session) {
-                    Some(t) => self.window_focused && self.terms.shown() == Some(*t),
+                    Some(t) => self.window_focused && self.terms.is_visible(*t),
                     None => {
                         !s.tty.is_empty() && ttys.lines().any(|t| ghostty::normal_tty(t) == ghostty::normal_tty(&s.tty))
                     }
@@ -390,10 +395,28 @@ impl App {
         self.open_term(Some(project), start);
     }
 
+    /// A terminal in a new tab; `from`: a tab of that terminal, starting in its current folder (UC-02.11).
     fn open_term(&mut self, project: Option<PathBuf>, start: Start) {
+        self.open_tab(project, start, None);
+    }
+
+    fn open_tab(&mut self, project: Option<PathBuf>, start: Start, from: Option<u64>) {
         let folder = project.clone().or_else(dirs::home_dir).unwrap_or_default();
         let id = self.terms.open(project, start.clone());
-        match terminal::open(id, &folder, start.input().as_deref()) {
+        let result = terminal::open(id, &folder, start.input().as_deref(), from.map(|f| (f, false)));
+        self.started(id, result);
+    }
+
+    /// A split beside `of` (UC-02.13), starting in its current folder.
+    fn split_term(&mut self, of: u64, side: Side) {
+        let Some(id) = self.terms.split(of, side) else { return };
+        let folder = self.terms.get(id).and_then(|t| t.project.clone()).or_else(dirs::home_dir).unwrap_or_default();
+        let result = terminal::open(id, &folder, None, Some((of, true)));
+        self.started(id, result);
+    }
+
+    fn started(&mut self, id: u64, result: Result<(), String>) {
+        match result {
             Ok(()) => {
                 self.focus_term = Some(id);
                 self.ctx.request_repaint();
@@ -402,6 +425,25 @@ impl App {
                 self.terms.close(id);
                 self.message = Some(Message { title: "No terminal".into(), body: e, automation: false });
             }
+        }
+    }
+
+    /// Ghostty's ⌘1 to ⌘9 and previous, next and last tab, in the tree's order.
+    fn goto_tab(&mut self, n: i32) {
+        let tabs = self.terms.tabs_in(&self.order);
+        let now = self.terms.shown().and_then(|s| {
+            tabs.iter().position(|&t| self.terms.get(t).map(|x| x.tab) == self.terms.get(s).map(|x| x.tab))
+        });
+        let len = tabs.len();
+        let i = match n {
+            -1 => now.map(|i| (i + len - 1) % len.max(1)),
+            -2 => now.map(|i| (i + 1) % len.max(1)),
+            -3 => len.checked_sub(1),
+            n if n > 0 => Some(n as usize - 1),
+            _ => None,
+        };
+        if let Some(&id) = i.and_then(|i| tabs.get(i)) {
+            self.show_term(id);
         }
     }
 
@@ -443,9 +485,10 @@ impl App {
     fn command(&mut self, cmd: Cmd) {
         match cmd {
             Cmd::New => {
-                let project = self.terms.shown().and_then(|id| self.terms.get(id)).and_then(|t| t.project.clone());
+                let shown = self.terms.shown();
+                let project = shown.and_then(|id| self.terms.get(id)).and_then(|t| t.project.clone());
                 if let Some(p) = project {
-                    self.open_term(Some(p), Start::Terminal);
+                    self.open_tab(Some(p), Start::Terminal, shown);
                 }
             }
             Cmd::Close => {
@@ -453,18 +496,26 @@ impl App {
                     self.close_term(id, false);
                 }
             }
-            Cmd::Goto(n) => {
-                if let Some(&id) = self.order.get(n - 1) {
-                    self.show_term(id);
+            Cmd::Goto(n) => self.goto_tab(n as i32),
+            Cmd::Split(side) => {
+                if let Some(id) = self.terms.shown() {
+                    self.split_term(id, side);
                 }
             }
             Cmd::Settings => self.settings_open = true,
+            // Clicked into: it has the keys already.
+            Cmd::Focused(id) => self.terms.show(id),
         }
     }
 
     /// Follows the pane's terminals: ended shells close, devices become known, sessions are matched to them.
     fn follow_terms(&mut self) {
-        for id in terminal::take_ended() {
+        for (id, running) in terminal::take_ended() {
+            if running {
+                // ⌘W while a program runs: asked first, like closing from the tree.
+                self.confirm = Some(Confirm::Close(id));
+                continue;
+            }
             terminal::close(id);
             self.terms.close(id);
             if let Some(next) = self.terms.shown() {
@@ -477,6 +528,52 @@ impl App {
         let mut waiting = Vec::new();
         let mut sandboxes = Vec::new();
         for (id, event) in terminal::take_events() {
+            // Ghostty's keybindings for tabs and splits (ADR 0008).
+            match event {
+                TermEvent::Split(side) => {
+                    self.split_term(id, side);
+                    continue;
+                }
+                TermEvent::GotoSplit(to) => {
+                    self.terms.show(id);
+                    if let Some(next) = self.terms.goto(to) {
+                        self.show_term(next);
+                    }
+                    continue;
+                }
+                TermEvent::Resize(side, px) => {
+                    self.terms.show(id);
+                    self.terms.resize(side, px as f32, self.pane);
+                    continue;
+                }
+                TermEvent::Equalize => {
+                    self.terms.show(id);
+                    self.terms.equalize();
+                    continue;
+                }
+                TermEvent::Zoom => {
+                    self.terms.show(id);
+                    self.terms.toggle_zoom();
+                    self.focus_term = Some(id);
+                    continue;
+                }
+                TermEvent::NewTab => {
+                    // Only in a project: a tab of the home shell would have no row in the tree to come back to.
+                    if let Some(project) = self.terms.get(id).and_then(|t| t.project.clone()) {
+                        self.open_tab(Some(project), Start::Terminal, Some(id));
+                    }
+                    continue;
+                }
+                TermEvent::GotoTab(n) => {
+                    self.goto_tab(n);
+                    continue;
+                }
+                TermEvent::Quit => {
+                    self.quit_asked();
+                    continue;
+                }
+                _ => {}
+            }
             let Some(t) = self.terms.get_mut(id) else { continue };
             match event {
                 TermEvent::Title(text) => {
@@ -494,13 +591,12 @@ impl App {
                         sandboxes.extend(t.project.clone());
                     }
                 }
-                TermEvent::Notify(body) => {
-                    if t.claude.is_some() {
-                        let wait = title::wait(&body);
-                        t.claude = Some((State::Waiting, Some(wait)));
-                        waiting.push((id, wait));
-                    }
+                TermEvent::Notify(body) if t.claude.is_some() => {
+                    let wait = title::wait(&body);
+                    t.claude = Some((State::Waiting, Some(wait)));
+                    waiting.push((id, wait));
                 }
+                _ => {}
             }
         }
         for p in sandboxes {
@@ -541,7 +637,7 @@ impl App {
     fn notify_term(&self, id: u64, wait: Wait) {
         if !self.prefs.notifications
             || self.in_term.values().any(|&t| t == id)
-            || (self.window_focused && self.terms.shown() == Some(id))
+            || (self.window_focused && self.terms.is_visible(id))
         {
             return;
         }
@@ -784,7 +880,13 @@ impl eframe::App for App {
         }
         // The pane's keys while the tree has them; while a terminal has them, its view hands them over (Cmd).
         let keys = ctx.input(|i| {
-            if !i.modifiers.command || i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl {
+            if !i.modifiers.command || i.modifiers.alt || i.modifiers.ctrl {
+                return None;
+            }
+            if i.key_pressed(egui::Key::D) {
+                return Some(Cmd::Split(if i.modifiers.shift { Side::Down } else { Side::Right }));
+            }
+            if i.modifiers.shift {
                 return None;
             }
             let digits = [
@@ -917,7 +1019,31 @@ impl eframe::App for App {
         let dialog = self.settings_open || self.message.is_some() || self.confirm.is_some();
         egui::CentralPanel::default().frame(egui::Frame::new().fill(Color32::from_rgb(24, 24, 26))).show(ui, |ui| {
             let rect = ui.max_rect();
-            terminal::layout(self.terms.shown(), rect, !dialog);
+            self.pane = panes::Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
+            let (shown, dividers) = self.terms.visible(self.pane, GAP);
+            let to_egui = |r: panes::Rect| Rect::from_min_size(egui::pos2(r.x, r.y), vec2(r.w, r.h));
+            let shown: Vec<(u64, Rect)> = shown.into_iter().map(|(id, r)| (id, to_egui(r))).collect();
+            terminal::layout(if dialog { &[] } else { &shown });
+            // The dividers lie between the terminals' views, so egui gets the mouse there: dragged, they resize.
+            for d in dividers {
+                let r = to_egui(d.rect);
+                let resp = ui.interact(r, egui::Id::new(("divider", &d.path)), Sense::drag());
+                let lit = resp.hovered() || resp.dragged();
+                ui.painter().rect_filled(r, 0.0, if lit { p.accent } else { p.sidebar });
+                if lit {
+                    ctx.set_cursor_icon(if d.down {
+                        egui::CursorIcon::ResizeVertical
+                    } else {
+                        egui::CursorIcon::ResizeHorizontal
+                    });
+                }
+                if resp.dragged()
+                    && let Some(pos) = resp.interact_pointer_pos()
+                {
+                    let ratio = if d.down { (pos.y - d.area.y) / d.area.h } else { (pos.x - d.area.x) / d.area.w };
+                    self.terms.set_ratio(&d.path, ratio);
+                }
+            }
             if let Some(e) = terminal::failed() {
                 ui.painter().text(rect.center(), Align2::CENTER_CENTER, e, theme::font(13.0), p.tertiary);
             }
@@ -1179,9 +1305,7 @@ impl App {
         let term = self.in_term.get(&s.id).copied();
         if let Some(t) = term {
             self.order.push(t);
-            if self.terms.shown() == Some(t) {
-                ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
-            }
+            highlight(ui, rect, &self.terms, t);
         }
         let color = match s.state {
             State::Working => p.accent,
@@ -1228,9 +1352,7 @@ impl App {
         let p = theme::current(ui.ctx());
         let (rect, resp) = row(ui, depth, egui::Id::new(("term", id)));
         self.order.push(id);
-        if self.terms.shown() == Some(id) {
-            ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
-        }
+        highlight(ui, rect, &self.terms, id);
         let t = self.terms.get(id);
         let claude = t.and_then(|t| t.claude);
         let sandbox = if t.is_some_and(|t| t.sbx) { "  ·  sandbox" } else { "" };
@@ -1391,6 +1513,16 @@ impl App {
         if close {
             self.message = None;
         }
+    }
+}
+
+/// The terminals of the shown tab are marked in the tree, the one with the focus more.
+fn highlight(ui: &egui::Ui, rect: Rect, terms: &Terms, id: u64) {
+    let p = theme::current(ui.ctx());
+    if terms.shown() == Some(id) {
+        ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
+    } else if terms.is_visible(id) {
+        ui.painter().rect_filled(rect, CornerRadius::same(6), p.hover);
     }
 }
 

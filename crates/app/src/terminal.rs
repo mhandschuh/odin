@@ -17,6 +17,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::cell::RefCell;
 use std::ffi::{CString, c_char, c_int, c_void};
 use std::sync::OnceLock;
+use yggdrasil_core::panes::{Goto, Side};
 
 static CTX: OnceLock<egui::Context> = OnceLock::new();
 /// Ghostty's app: started once, with the person's config; an error says why it didn't.
@@ -34,7 +35,10 @@ pub enum Cmd {
     New,
     Close,
     Goto(usize),
+    Split(Side),
     Settings,
+    /// A terminal took the focus (clicked into).
+    Focused(u64),
 }
 
 thread_local! {
@@ -42,7 +46,7 @@ thread_local! {
     static PARENT: RefCell<Option<Retained<NSView>>> = const { RefCell::new(None) };
     static CMDS: RefCell<Vec<Cmd>> = const { RefCell::new(Vec::new()) };
     /// Terminals whose shell ended (exit): Ghostty asks to close them.
-    static ENDED: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+    static ENDED: RefCell<Vec<(u64, bool)>> = const { RefCell::new(Vec::new()) };
     /// Text an input method is still composing (a dead key's accent, a reading before its kanji): shown at the cursor,
     /// not yet typed.
     static MARKED: RefCell<String> = const { RefCell::new(String::new()) };
@@ -188,6 +192,10 @@ define_class!(
             if let Some(s) = self.surface() {
                 unsafe { g::ghostty_surface_set_focus(s, true) };
             }
+            if let Some(id) = self.id() {
+                CMDS.with(|c| c.borrow_mut().push(Cmd::Focused(id)));
+                wakeup(std::ptr::null_mut());
+            }
             true
         }
 
@@ -284,19 +292,17 @@ define_class!(
                 | NSEventModifierFlags::Option
                 | NSEventModifierFlags::Command);
             if first.as_ref().is_some_and(|f| std::ptr::eq(&**f, me)) && held == NSEventModifierFlags::Command {
-                // Yggdrasil's own keys, and the menu's (Quit, Hide, Minimize), aren't the shell's.
+                // The menu's keys (Quit, Hide, Minimize) and the settings aren't the shell's; everything else goes to
+                // Ghostty, whose keybindings ask for tabs and splits (ADR 0008).
                 let key = event.charactersIgnoringModifiers().map(|c| c.to_string()).unwrap_or_default();
-                let cmd = match key.as_str() {
-                    "t" => Some(Cmd::New),
-                    "w" => Some(Cmd::Close),
-                    "," => Some(Cmd::Settings),
+                match key.as_str() {
                     "q" | "h" | "m" => return objc2::runtime::Bool::NO,
-                    k => k.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).map(Cmd::Goto),
-                };
-                if let Some(cmd) = cmd {
-                    CMDS.with(|c| c.borrow_mut().push(cmd));
-                    wakeup(std::ptr::null_mut());
-                    return objc2::runtime::Bool::YES;
+                    "," => {
+                        CMDS.with(|c| c.borrow_mut().push(Cmd::Settings));
+                        wakeup(std::ptr::null_mut());
+                        return objc2::runtime::Bool::YES;
+                    }
+                    _ => {}
                 }
             }
             if first.is_some_and(|f| std::ptr::eq(&*f, me)) && flags.contains(NSEventModifierFlags::Command) {
@@ -447,6 +453,10 @@ fn translated(event: &NSEvent, flags: NSEventModifierFlags) -> Option<Retained<N
 }
 
 impl TermView {
+    fn id(&self) -> Option<u64> {
+        PANES.with(|p| p.borrow().iter().find(|p| std::ptr::eq(&*p.view, self)).map(|p| p.id))
+    }
+
     fn surface(&self) -> Option<g::Surface> {
         PANES.with(|p| p.borrow().iter().find(|p| std::ptr::eq(&*p.view, self)).map(|p| p.surface))
     }
@@ -474,6 +484,16 @@ extern "C" fn wakeup(_: *mut c_void) {
 pub enum TermEvent {
     Title(String),
     Notify(String),
+    /// Ghostty's keybindings (ADR 0008): a split beside it, moving, resizing, equalizing, zooming, a tab, quitting.
+    Split(Side),
+    GotoSplit(Goto),
+    Resize(Side, u16),
+    Equalize,
+    Zoom,
+    NewTab,
+    /// 1 to 9, or Ghostty's previous (-1), next (-2) and last (-3).
+    GotoTab(i32),
+    Quit,
 }
 
 /// Ghostty may report from its own threads: collected here, taken on the main thread (`take_events`).
@@ -484,19 +504,40 @@ fn text_at(p: u64) -> Option<String> {
     (!p.is_null()).then(|| unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().into_owned())
 }
 
+fn side(v: u64, order: [Side; 4]) -> Option<Side> {
+    order.get((v & 0xFFFF_FFFF) as usize).copied()
+}
+
 extern "C" fn action(_: g::App, target: g::Target, action: g::Action) -> bool {
-    if target.tag != g::TARGET_SURFACE {
-        return false;
-    }
+    // The payload's first word: an enum or a pointer; a resize holds its amount (16 bits) and then its direction.
+    let p = action.action[0];
     let event = match action.tag {
-        g::ACTION_SET_TITLE => text_at(action.action[0]).map(TermEvent::Title),
+        g::ACTION_QUIT => Some(TermEvent::Quit),
+        _ if target.tag != g::TARGET_SURFACE => None,
+        g::ACTION_SET_TITLE => text_at(p).map(TermEvent::Title),
         // Shown by Yggdrasil instead, unless the terminal is in front (UC-04).
         g::ACTION_DESKTOP_NOTIFICATION => Some(TermEvent::Notify(text_at(action.action[1]).unwrap_or_default())),
+        g::ACTION_NEW_SPLIT => side(p, [Side::Right, Side::Down, Side::Left, Side::Up]).map(TermEvent::Split),
+        g::ACTION_GOTO_SPLIT => match p & 0xFFFF_FFFF {
+            0 => Some(Goto::Previous),
+            1 => Some(Goto::Next),
+            v => side(v - 2, [Side::Up, Side::Left, Side::Down, Side::Right]).map(Goto::To),
+        }
+        .map(TermEvent::GotoSplit),
+        g::ACTION_RESIZE_SPLIT => {
+            side(p >> 32, [Side::Up, Side::Down, Side::Left, Side::Right]).map(|s| TermEvent::Resize(s, p as u16))
+        }
+        g::ACTION_EQUALIZE_SPLITS => Some(TermEvent::Equalize),
+        g::ACTION_TOGGLE_SPLIT_ZOOM => Some(TermEvent::Zoom),
+        g::ACTION_NEW_TAB => Some(TermEvent::NewTab),
+        g::ACTION_GOTO_TAB => Some(TermEvent::GotoTab(p as u32 as i32)),
         _ => None,
     };
     let Some(event) = event else { return false };
+    // An app-wide action has no terminal: 0.
+    let surface = if target.tag == g::TARGET_SURFACE { target.target as usize } else { 0 };
     if let Ok(mut e) = EVENTS.lock() {
-        e.push((target.target as usize, event));
+        e.push((surface, event));
     }
     wakeup(std::ptr::null_mut());
     true
@@ -507,7 +548,12 @@ pub fn take_events() -> Vec<(u64, TermEvent)> {
     let events = EVENTS.lock().map(|mut e| std::mem::take(&mut *e)).unwrap_or_default();
     PANES.with(|p| {
         let p = p.borrow();
-        events.into_iter().filter_map(|(s, e)| p.iter().find(|p| p.surface as usize == s).map(|p| (p.id, e))).collect()
+        events
+            .into_iter()
+            .filter_map(|(s, e)| {
+                if s == 0 { Some((0, e)) } else { p.iter().find(|p| p.surface as usize == s).map(|p| (p.id, e)) }
+            })
+            .collect()
     })
 }
 
@@ -555,8 +601,9 @@ extern "C" fn write_clipboard(_: *mut c_void, _: c_int, contents: *const g::Clip
 }
 
 // Only noted here: Ghostty may ask while it's busy with the terminal (in a tick), so it's closed on the next frame.
-extern "C" fn close_surface(userdata: *mut c_void, _: bool) {
-    ENDED.with(|e| e.borrow_mut().push(userdata as u64));
+// `running`: a program still runs in it (⌘W while Claude works), so Yggdrasil asks first; false when its shell ended.
+extern "C" fn close_surface(userdata: *mut c_void, running: bool) {
+    ENDED.with(|e| e.borrow_mut().push((userdata as u64, running)));
     wakeup(std::ptr::null_mut());
 }
 
@@ -609,8 +656,9 @@ pub fn attach(frame: &eframe::Frame, ctx: &egui::Context) {
     }
 }
 
-/// Starts a terminal in `folder`, hidden until it's shown; `input` is typed into its shell once it runs.
-pub fn open(id: u64, folder: &std::path::Path, input: Option<&str>) -> Result<(), String> {
+/// Starts a terminal in `folder`, hidden until it's shown; `input` is typed into its shell once it runs. `from`: a
+/// split or tab of that terminal, which starts where that one is (its current folder, font size), as in Ghostty.
+pub fn open(id: u64, folder: &std::path::Path, input: Option<&str>, from: Option<(u64, bool)>) -> Result<(), String> {
     let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
     let app = app()?;
     let parent = PARENT.with(|p| p.borrow().clone()).ok_or("There's no window to draw the terminal in.")?;
@@ -620,15 +668,24 @@ pub fn open(id: u64, folder: &std::path::Path, input: Option<&str>) -> Result<()
     let scale = view.window().map_or(2.0, |w| w.backingScaleFactor());
     let dir = CString::new(folder.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
     let input = input.and_then(|i| CString::new(format!("{i}\n")).ok());
-    let mut cfg = unsafe { g::ghostty_surface_config_new() };
+    let inherited = from.and_then(|(of, split)| {
+        let ctx = if split { g::CONTEXT_SPLIT } else { g::CONTEXT_TAB };
+        surface_of(of).map(|s| unsafe { g::ghostty_surface_inherited_config(s, ctx) })
+    });
+    let is_inherited = inherited.is_some();
+    let mut cfg = inherited.unwrap_or_else(|| unsafe { g::ghostty_surface_config_new() });
+    if !is_inherited || cfg.working_directory.is_null() {
+        cfg.working_directory = dir.as_ptr();
+    }
     cfg.platform_tag = g::PLATFORM_MACOS;
     cfg.platform =
         g::Platform { macos: g::PlatformMacos { nsview: Retained::as_ptr(&view) as *mut AnyObject as *mut c_void } };
     cfg.userdata = id as *mut c_void;
     cfg.scale_factor = scale;
-    cfg.working_directory = dir.as_ptr();
     cfg.initial_input = input.as_ref().map_or(std::ptr::null(), |i| i.as_ptr());
-    cfg.context = g::CONTEXT_WINDOW;
+    if !is_inherited {
+        cfg.context = g::CONTEXT_WINDOW;
+    }
     let surface = unsafe { g::ghostty_surface_new(app, &cfg) };
     if surface.is_null() {
         view.removeFromSuperview();
@@ -678,7 +735,8 @@ pub fn needs_confirm(id: u64) -> bool {
     surface_of(id).is_some_and(|s| unsafe { g::ghostty_surface_needs_confirm_quit(s) })
 }
 
-pub fn take_ended() -> Vec<u64> {
+/// Terminals Ghostty asks to close: their shell ended, or ⌘W (`true`: a program still runs in it).
+pub fn take_ended() -> Vec<(u64, bool)> {
     ENDED.with(|e| std::mem::take(&mut *e.borrow_mut()))
 }
 
@@ -692,15 +750,16 @@ fn is_first_responder(view: &TermView) -> bool {
     first.is_some_and(|f| std::ptr::eq(&*f, me))
 }
 
-/// Shows `shown` in `rect` (the window's points) and hides the others, all of them while `visible` is false (a dialog
-/// of egui's is open, which the terminal would cover); ticks Ghostty.
-pub fn layout(shown: Option<u64>, rect: egui::Rect, visible: bool) {
+/// Shows the terminals in `shown` at their rects (the window's points) and hides all others, all of them when the
+/// list is empty (a dialog of egui's is open, which they would cover); ticks Ghostty.
+pub fn layout(shown: &[(u64, egui::Rect)]) {
     // Nothing of PANES is held while Ghostty works: it may call back.
     let panes: Vec<Pane> = PANES.with(|p| {
         p.borrow().iter().map(|p| Pane { id: p.id, surface: p.surface, view: p.view.clone(), size: p.size }).collect()
     });
     for Pane { id, surface: s, view, size } in panes {
-        let on = visible && Some(id) == shown;
+        let rect = shown.iter().find(|(x, _)| *x == id).map(|(_, r)| *r);
+        let on = rect.is_some();
         if view.isHidden() == on {
             if !on && is_first_responder(&view) {
                 release_focus();
@@ -708,9 +767,7 @@ pub fn layout(shown: Option<u64>, rect: egui::Rect, visible: bool) {
             view.setHidden(!on);
             unsafe { g::ghostty_surface_set_occlusion(s, on) };
         }
-        if !on {
-            continue;
-        }
+        let Some(rect) = rect else { continue };
         view.setFrame(NSRect::new(
             NSPoint::new(rect.min.x as f64, rect.min.y as f64),
             NSSize::new(rect.width() as f64, rect.height() as f64),

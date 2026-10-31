@@ -30,6 +30,8 @@
 - 2b. The terminal's shell ends: the terminal closes and the one shown before it shows; with none left, a shell in the
   home folder (UC-02.10).
 - 2c. The person moves between the terminals, opens and closes them with the keyboard (UC-02.11).
+- 2e. The person splits a terminal: the new one shares its tab, to the right or below (UC-02.13); moves between the
+  splits (UC-02.14); resizes, evens out or zooms them (UC-02.15). The keys are those of the person's Ghostty settings.
 - 2d. The person quits Yggdrasil while a program runs in one of its terminals: Yggdrasil asks first (UC-02.12).
 
 ## Success guarantee
@@ -49,5 +51,8 @@ which terminal it is.
 - **UC-02.8** Given the terminal pane and Alice's keyboard set to U.S. International, when she types " and then o, then ö appears once, and while only the " is typed it shows at the cursor without being sent; an emoji picked in the character viewer arrives as that emoji.
 - **UC-02.9** Given the project *vesta*, when Alice chooses *Open in Ghostty* in its menu and then *Open Terminal*, *Start Claude* or *Start Claude in a Sandbox*, then Ghostty opens a new tab in *vesta*'s folder, with Claude Code started in it for the last two.
 - **UC-02.10** Given terminals of *moneta* and then *vesta* in the pane, *vesta*'s shown, when Alice types `exit` in it, then *vesta*'s terminal closes, leaves the tree, and *moneta*'s shows; when the last terminal closes, the pane shows a shell in her home folder.
-- **UC-02.11** Given terminals of *vesta* and *moneta* in the pane, then ⌘1 and ⌘2 show them in the tree's order, ⌘T opens another terminal in the project of the one shown, and ⌘W closes the one shown; while a program runs in it, ⌘W asks first, and *Cancel* keeps it running.
+- **UC-02.11** Given tabs of *vesta* and *moneta* in the pane, with Ghostty's usual keys, then ⌘1 and ⌘2 show them in the tree's order, ⌘T opens another tab in the project of the one shown, starting in the folder its shell is in, and ⌘W closes the terminal with the focus; while a program runs in it, ⌘W asks first, and *Cancel* keeps it running. Keys Alice changed in her Ghostty settings work the same way.
 - **UC-02.12** Given Claude running in a terminal of the pane, when Alice quits Yggdrasil with ⌘Q or by closing its window, then Yggdrasil asks first and says how many terminals run a program; *Cancel* keeps everything running and *Quit* ends them; with only shells waiting at their prompt, Yggdrasil quits without asking.
+- **UC-02.13** Given a terminal of *vesta* in the pane, with Ghostty's usual keys, when Alice presses ⌘D, then a new terminal opens to its right in the same tab, starting in the folder the first one's shell is in, takes what she types, and is listed under *vesta*; ⌘⇧D opens one below instead; when one of them closes, the other takes the whole tab again.
+- **UC-02.14** Given a tab split into three terminals, then ⌘] and ⌘[ give the focus to the next and the previous one, and ⌘⌥ with an arrow to the nearest one on that side; clicking into a terminal gives it the focus, and the tree marks it.
+- **UC-02.15** Given a tab split in two, when Alice drags the divider between them, then they share the room as dragged; ⌘⌃= gives all of them the same room, and ⌘⇧↩ shows the one with the focus over the whole tab until pressed again.

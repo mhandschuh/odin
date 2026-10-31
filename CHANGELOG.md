@@ -5,6 +5,9 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- **Splits and tabs as in Ghostty:** ⌘D splits a terminal to the right, ⌘⇧D below, ⌘T opens a tab, ⌘W closes;
+  move between splits, drag the dividers, even them out and zoom one, all with your Ghostty keybindings. New splits
+  and tabs start in the folder you're in.
 - **Sessions have names:** the name you gave with `/rename`, the topic Claude shows in its title, or the title Claude
   gave the session, also for earlier sessions; terminals show their shell's title (folder or program).
 - **Agents show again, with their task:** each running agent shows its kind and the few words Claude gave its task
