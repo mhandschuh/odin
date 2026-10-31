@@ -13,7 +13,7 @@ Priority: **Must** (required) · **Should** (important, may follow later) · **C
 | ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | -------- | ------------------------- |
 | FR-01 | Projects  | The person shall add folders as projects, by picking or dropping them, each folder once.                                                                           | UC-01  | Must     | UC-01.1–2                 |
 | FR-02 | Groups    | Projects shall be arranged in named groups, groups inside groups, in the person's order, by dragging; groups can be renamed and removed, their contents moving up. | UC-01  | Must     | UC-01.3, UC-01.5, UC-01.7 |
-| FR-03 | Kept tree | The tree shall be kept as arranged across restarts; a project whose folder is gone shall be marked as missing.                                                     | UC-01  | Must     | UC-01.4, UC-01.6          |
+| FR-03 | Kept tree | The tree shall be kept as arranged across restarts, at the width the person dragged it to; a project whose folder is gone shall be marked as missing.              | UC-01  | Must     | UC-01.4, UC-01.6, UC-01.8 |
 
 ### 1.2 Terminals
 
@@ -61,7 +61,7 @@ Priority: **Must** (required) · **Should** (important, may follow later) · **C
 | NFR-02 | Claude never held up    | Reliability · fault tolerance                 | The reporting shall never stop or fail a Claude session, also when Yggdrasil isn't running, and take less than 100 milliseconds per step.                                                                                                                                             | Must     | NFR-02.1–2  |
 | NFR-03 | Network only on request | Security · confidentiality                    | The app shall use no network, except asking Anthropic's usage endpoint for the limits per model, signed in with the person's Claude login, only while that is turned on and at most every 5 minutes; and it shall have no accounts, ads, analytics, tracking or crash reporting.      | Must     | NFR-03.1–2  |
 | NFR-04 | Resource use            | Performance efficiency · resource utilization | While nothing happens, the app shall do no work: it shall learn of changes from the system, not by checking repeatedly.                                                                                                                                                               | Must     | NFR-04.1    |
-| NFR-05 | Look                    | Usability · user interface aesthetics         | The app shall use dark surfaces with the ember accent and have its settings in a settings window.                                                                                                                                                                                     | Must     | NFR-05.1    |
+| NFR-05 | Look                    | Usability · user interface aesthetics         | The app shall use dark surfaces with the ember accent and have its settings in a settings window, its header (name and buttons) in the window's top row beside the traffic lights, where it moves the window as a title bar does.                                                     | Must     | NFR-05.1–2  |
 | NFR-06 | Interface language      | Usability · learnability                      | The interface shall be in US English and use the glossary's terms.                                                                                                                                                                                                                    | Must     | NFR-06.1    |
 | NFR-07 | Platform                | Compatibility                                 | The app shall run on Macs with Apple silicon and the current macOS version, with Ghostty 1.4 or later; older versions aren't tested.                                                                                                                                                  | Must     | NFR-07.1    |
 
@@ -89,6 +89,7 @@ Priority: **Must** (required) · **Should** (important, may follow later) · **C
 ### NFR-05: Look
 
 - **NFR-05.1** Given the app on the Mac, then its window uses dark surfaces with the ember accent, and its settings open in a settings window with ⌘,.
+- **NFR-05.2** Given the window on the Mac, then *Yggdrasil* and its three buttons sit in the window's top row, to the right of the traffic lights and centered with them; dragging that row's empty part moves the window, and double-clicking it zooms the window.
 
 ### NFR-06: Interface language
 

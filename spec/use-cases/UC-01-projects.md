@@ -22,6 +22,7 @@
 - 1a. The folder is in the tree already: it isn't added twice; the existing one is selected (UC-01.2).
 - 4a. A group with projects is removed: its projects move up to where the group was (UC-01.5).
 - 4b. A project's folder was deleted or moved: it stays in the tree, marked as missing (UC-01.6).
+- 4c. The person drags the tree's edge to make it wider or narrower; it keeps that width (UC-01.8).
 
 ## Success guarantee
 
@@ -37,3 +38,4 @@ changed by it.
 - **UC-01.5** Given the group *Apps* holding *vesta* inside the group *Work*, when Alice removes *Apps*, then *vesta* is in *Work* where *Apps* was; the folders on the disk are untouched.
 - **UC-01.6** Given the project *old*, when its folder is deleted on the disk, then *old* stays in the tree, marked as missing, until Alice removes it.
 - **UC-01.7** Given the group *Apps*, when Alice renames it to *Mobile*, then the tree shows *Mobile* in the same place with the same contents.
+- **UC-01.8** Given Yggdrasil's window, when Alice drags the edge between the tree and the terminals, then the tree gets wider or narrower with it, between 240 and 560 points, and has the same width after Yggdrasil starts again.

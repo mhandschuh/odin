@@ -5,6 +5,8 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- **A tidier window:** the tree's edge can be dragged to make it wider or narrower, and it keeps its width; the name
+  and its buttons sit in the top row beside the traffic lights, which moves the window as a title bar does.
 - **Claude's limits at the bottom of the window:** the 5-hour and 7-day limits with the share used and when they
   start over, yellow from 80 %. Turn on *Limits per model* in the settings for Fable's week too: Yggdrasil then asks
   Anthropic every 5 minutes with your Claude login (the only network it uses). Your own Claude status line still shows.

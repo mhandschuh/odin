@@ -22,6 +22,13 @@ const INDENT: f32 = 16.0;
 const WAITING: Color32 = Color32::from_rgb(255, 204, 0);
 /// Between splits: the divider, and where it's grabbed.
 const GAP: f32 = 4.0;
+/// Between the tree and the terminals: egui's own, so the tree's edge can be grabbed there (the terminals' views take
+/// the mouse, the tree's rows take it for dragging projects).
+const EDGE: f32 = 6.0;
+/// The height of the window's top row, where macOS puts the traffic lights; on the Mac the tree's header sits in it.
+const TITLE: f32 = 28.0;
+/// Room for the traffic lights at the top row's left.
+const LIGHTS: f32 = 70.0;
 
 enum Msg {
     Files,
@@ -126,6 +133,8 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::install(&cc.egui_ctx);
+        // The tree's edge is grabbed in the strip beside it (EDGE).
+        cc.egui_ctx.all_styles_mut(|s| s.interaction.resize_grab_radius_side = EDGE);
         let ctx = cc.egui_ctx.clone();
         let (tx, rx) = crossbeam_channel::unbounded();
         let watch = {
@@ -1062,17 +1071,34 @@ impl eframe::App for App {
                 .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::symmetric(12, 0)))
                 .show(ui, |ui| self.limits_bar(ui));
         }
-        egui::Panel::left("tree")
+        let mac = cfg!(target_os = "macos");
+        let tree = egui::Panel::left("tree")
             .resizable(true)
-            .default_size(320.0)
+            .default_size(self.prefs.tree_width)
             .min_size(240.0)
             .max_size(560.0)
-            .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::same(8)))
+            .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin {
+                left: 8,
+                right: 8,
+                top: if mac { 0 } else { 8 },
+                bottom: 8,
+            }))
             .show(ui, |ui| {
-            if cfg!(target_os = "macos") {
-                ui.add_space(22.0);
+            // The header: on the Mac in the window's top row, beside the traffic lights, where it moves the window as
+            // a title bar does.
+            let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), if mac { TITLE } else { 26.0 }), Sense::hover());
+            if mac {
+                let bar = ui.interact(row, egui::Id::new("title bar"), Sense::click_and_drag());
+                if bar.drag_started() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
+                if bar.double_clicked() {
+                    let zoomed = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!zoomed));
+                }
             }
-            ui.horizontal(|ui| {
+            let inner = if mac { Rect::from_min_max(egui::pos2(row.min.x + LIGHTS, row.min.y), row.max) } else { row };
+            ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
                 ui.label(egui::RichText::new("Yggdrasil").strong().size(15.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(icon::GEAR).on_hover_text("Settings  ⌘,").clicked() {
@@ -1129,10 +1155,22 @@ impl eframe::App for App {
                 }
             });
         });
+        // Dragged to a new width: kept for the next start once let go (UC-01.8).
+        let width = tree.response.rect.width();
+        if (width - self.prefs.tree_width).abs() >= 1.0 && !ctx.input(|i| i.pointer.any_down()) {
+            self.prefs.tree_width = width;
+            self.prefs.save(&paths::prefs());
+        }
         // egui's dialogs would be under the terminal: while one is open, the terminal steps aside.
         let dialog = self.settings_open || self.message.is_some() || self.confirm.is_some();
         egui::CentralPanel::default().frame(egui::Frame::new().fill(Color32::from_rgb(24, 24, 26))).show(ui, |ui| {
-            let rect = ui.max_rect();
+            let mut rect = ui.max_rect();
+            ui.painter().rect_filled(
+                Rect::from_min_max(rect.min, egui::pos2(rect.min.x + EDGE, rect.max.y)),
+                0.0,
+                p.sidebar,
+            );
+            rect.min.x += EDGE;
             self.pane = panes::Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
             let (shown, dividers) = self.terms.visible(self.pane, GAP);
             let to_egui = |r: panes::Rect| Rect::from_min_size(egui::pos2(r.x, r.y), vec2(r.w, r.h));
