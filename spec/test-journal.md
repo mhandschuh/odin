@@ -5,6 +5,14 @@ without a test, listed in status.md under *Next hand-check run*), each ✓ passe
 was seen. When a run fails, the fix gets a new run, on the same day too. Only added to, never rewritten; a
 criterion's newest result counts. How and when to test: test-plan.md.
 
+## 2026-10-31 · run 6 · in use · 3f17b2a (./x run) on the Mac
+
+| Criterion | Result | Seen                                                                                                                     |
+| --------- | :----: | ------------------------------------------------------------------------------------------------------------------------ |
+| UC-02.13  | ✓      | Adding splits works.                                                                                                     |
+| UC-06.1   | ✓      | With a Claude session on the Mac, the bar shows the limits.                                                              |
+| UC-06.5   | ✗      | With only a sandbox session running, the bar showed *7-day 69%* (actually 84%) and no 5-hour limit (actually about 14%). |
+
 ## 2026-10-31 · run 5 · in use · 973b7a8 (./x run) on the Mac
 
 | Criterion | Result | Seen                              |
