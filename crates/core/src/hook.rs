@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 pub const SCRIPT: &str = include_str!("hook.sh");
 
-/// The steps Yggdrasil listens to (ADR 0003).
-pub const EVENTS: [&str; 9] = [
+/// The steps Yggdrasil listens to (ADR 0003); PreToolUse only for the agent tool (`AGENT_TOOLS`).
+pub const EVENTS: [&str; 10] = [
     "SessionStart",
     "SessionEnd",
     "UserPromptSubmit",
@@ -14,7 +14,12 @@ pub const EVENTS: [&str; 9] = [
     "Stop",
     "SubagentStart",
     "SubagentStop",
+    "PreToolUse",
 ];
+
+/// The tool that starts an agent, named Task in earlier Claude versions: PreToolUse is matched to it alone, so no
+/// other tool waits for the hook.
+pub const AGENT_TOOLS: &str = "Task|Agent";
 
 /// The command in Claude's user settings: the script in the app's folder, as on the Mac.
 pub fn mac_command() -> String {
@@ -57,6 +62,9 @@ pub fn add(settings: &Value, command: &str) -> Value {
         let mut list = hooks.get(ev).and_then(Value::as_array).cloned().unwrap_or_default();
         if !list.iter().any(|g| is_ours(g, command)) {
             let mut group = Map::new();
+            if ev == "PreToolUse" {
+                group.insert("matcher".into(), AGENT_TOOLS.into());
+            }
             group.insert(
                 "hooks".into(),
                 Value::Array(vec![serde_json::json!({ "type": "command", "command": command, "timeout": 5 })]),
@@ -123,6 +131,10 @@ fn change(file: &Path, f: impl Fn(&Value) -> Value) -> Result<(), Error> {
     let existed = read(file)?;
     let before = existed.clone().unwrap_or_else(|| Value::Object(Map::new()));
     let after = f(&before);
+    // Unchanged (connected already): the person's file stays as they wrote it.
+    if existed.as_ref() == Some(&after) {
+        return Ok(());
+    }
     if existed.is_none() && after.as_object().is_some_and(Map::is_empty) {
         return Ok(());
     }
@@ -203,6 +215,8 @@ mod tests {
             assert!(s["hooks"][ev].as_array().unwrap().iter().any(|g| is_ours(g, &mac_command())), "{ev}");
         }
         assert!(is_added(&s, &mac_command()));
+        assert_eq!(s["hooks"]["PreToolUse"][0]["matcher"], AGENT_TOOLS, "only the agent tool waits for the hook");
+        assert!(s["hooks"]["Stop"][0].get("matcher").is_none());
         assert_eq!(add(&s, &mac_command()), s, "connecting twice changes nothing");
     }
 
@@ -330,6 +344,26 @@ mod tests {
         assert_eq!(events.len(), 4);
         assert_eq!(events[3].notification_type, "permission_prompt");
         assert!(events.iter().all(|e| e.session_id == "s1" && e.cwd == Path::new("/code/vesta") && e.t > 0));
+    }
+
+    #[test]
+    fn uc_03_11_an_agents_task_is_kept_but_not_its_prompt() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path().join("e.jsonl");
+        let out_s = out.to_str().unwrap();
+        let start = r#","tool_name":"Agent","tool_input":{"description":"Find the \"auth\" handler","prompt":"Search the secret repo","subagent_type":"Explore"}"#;
+        run("mac", &report("PreToolUse", start), &[("YGGDRASIL_EVENTS", out_s)]);
+        run(
+            "mac",
+            &report("PostToolUse", r#","agent_id":"a1","tool_input":{"command":"ls"}"#),
+            &[("YGGDRASIL_EVENTS", out_s)],
+        );
+        let text = std::fs::read_to_string(&out).unwrap();
+        assert!(!text.contains("secret") && !text.contains("Agent") && !text.contains("ls"), "{text}");
+        let events: Vec<_> = text.lines().filter_map(crate::events::Event::parse).collect();
+        assert_eq!(events.len(), 2, "{text}");
+        assert_eq!((events[0].task.as_str(), events[0].subagent_type.as_str()), ("Find the auth handler", "Explore"));
+        assert_eq!(events[1].agent_id, "a1");
     }
 
     #[test]

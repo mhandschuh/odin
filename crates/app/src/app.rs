@@ -172,8 +172,27 @@ impl App {
         // Steps from before this start whose session left no end and no process to watch are old news.
         let day_ago = now_secs().saturating_sub(24 * 3600);
         app.sessions.running.retain(|_, s| s.pid != 0 || !s.sandbox.is_empty() || s.last >= day_ago);
+        // The task words of agents that ended aren't kept (NFR-01.2).
+        let keep = app.sessions.tasks();
+        for f in app.event_files() {
+            events::forget_tasks(&f, &keep);
+        }
+        app.refresh_hooks();
         app.ask_sandboxes();
         app
+    }
+
+    /// A newer Yggdrasil may listen to more steps or write its lines differently: where it's connected, the script and
+    /// the settings are brought up to date (unchanged settings aren't touched).
+    fn refresh_hooks(&self) {
+        if self.connected {
+            let _ = hook::connect(&paths::claude_settings(), &paths::app_dir());
+        }
+        for p in self.sandbox_projects() {
+            if hook::is_project_connected(&p) {
+                let _ = hook::connect_project(&p);
+            }
+        }
     }
 
     fn event_files(&self) -> Vec<PathBuf> {
@@ -1180,9 +1199,10 @@ impl App {
                 }
             });
         }
-        for kind in s.agents.values() {
+        for a in s.agents.values() {
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW - 4.0), Sense::hover());
-            label(ui, rect, depth + 1, icon::ROBOT, p.secondary, kind, p.secondary);
+            let text = if a.task.is_empty() { a.kind.clone() } else { format!("{}  ·  {}", a.kind, a.task) };
+            label(ui, rect, depth + 1, icon::ROBOT, p.secondary, &text, p.secondary);
         }
     }
 

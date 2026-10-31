@@ -60,6 +60,7 @@ them too, and they are met only when the test passes and the newest hand check p
 | UC-02.10  | a real shell ending                                         |
 | UC-03.7   | the terminal shown or brought to the front                  |
 | UC-03.10  | Claude's state in a pane terminal, by hand and in a sandbox |
+| UC-03.11  | real agents with their tasks                                |
 | UC-03.1   | the state of a real session                                 |
 | UC-03.2   | a real permission request                                   |
 | UC-03.3   | a real subagent                                             |

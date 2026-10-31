@@ -5,6 +5,8 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- **Agents show again, with their task:** each running agent shows its kind and the few words Claude gave its task
+  (*Explore · Find the auth handler*), also while it works on in the background after Claude's turn.
 - **Claude's state in every terminal of the window:** Claude started by hand, also inside a sandbox (`sbx run`),
   shows as working, waiting or idle, read from the terminal itself; it notifies when it waits. Starting a sandbox by
   hand turns on *Sandbox Sessions* for the project, so later sessions there report their agents too.

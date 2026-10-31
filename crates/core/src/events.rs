@@ -15,6 +15,11 @@ pub struct Event {
     pub agent_id: String,
     #[serde(default)]
     pub agent_type: String,
+    /// The agent tool's start (PreToolUse): the kind of agent asked for and the few words naming its task.
+    #[serde(default)]
+    pub subagent_type: String,
+    #[serde(default)]
+    pub task: String,
     #[serde(default)]
     pub notification_type: String,
     #[serde(default)]
@@ -63,14 +68,28 @@ pub struct Session {
     pub cwd: PathBuf,
     pub state: State,
     pub wait: Option<Wait>,
-    /// Running agents: id → kind.
-    pub agents: BTreeMap<String, String>,
+    /// Running agents by id.
+    pub agents: BTreeMap<String, Agent>,
+    /// Agents asked for whose start hasn't come yet: their kind and task, oldest first.
+    pub asked: Vec<(String, String)>,
     pub sandbox: String,
     pub pid: u32,
     pub tty: String,
     pub since: u64,
     pub last: u64,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Agent {
+    pub kind: String,
+    /// The few words Claude gave its task; empty when unknown.
+    pub task: String,
+    /// When it was last seen working.
+    pub last: u64,
+}
+
+/// An agent not seen working for this long has ended without saying so (interrupted with Esc).
+pub const AGENT_SILENT: u64 = 10 * 60;
 
 /// The running sessions, folded from the hook's lines.
 #[derive(Clone, Debug, Default)]
@@ -102,6 +121,7 @@ impl Sessions {
             state: State::Idle,
             wait: None,
             agents: BTreeMap::new(),
+            asked: Vec::new(),
             sandbox: e.sandbox.clone(),
             pid: 0,
             tty: String::new(),
@@ -116,6 +136,16 @@ impl Sessions {
             s.tty = e.tty.clone();
         }
         let before = s.state;
+        // A step inside an agent: it works (also one started before Yggdrasil listened).
+        if !e.agent_id.is_empty() && e.hook_event_name != "SubagentStop" {
+            let agent = s.agents.entry(e.agent_id.clone()).or_insert_with(|| Agent {
+                kind: if e.agent_type.is_empty() { "agent".into() } else { e.agent_type.clone() },
+                task: String::new(),
+                last: e.t,
+            });
+            agent.last = agent.last.max(e.t);
+        }
+        s.agents.retain(|_, a| a.last + AGENT_SILENT >= e.t);
         match e.hook_event_name.as_str() {
             "UserPromptSubmit" | "PostToolUse" => {
                 s.state = State::Working;
@@ -139,14 +169,19 @@ impl Sessions {
                     s.wait = Some(Wait::Answer);
                 }
             },
+            // Agents may go on working in the background after the turn: they leave with their own stop.
             "Stop" => {
                 s.state = State::Idle;
                 s.wait = None;
-                s.agents.clear();
             }
+            "PreToolUse" => s.asked.push((e.subagent_type.clone(), e.task.clone())),
             "SubagentStart" => {
-                let kind = if e.agent_type.is_empty() { "agent".to_string() } else { e.agent_type.clone() };
-                s.agents.insert(e.agent_id.clone(), kind);
+                // Its task is the oldest asked for of its kind (several may start at once), or else the oldest.
+                let i = s.asked.iter().position(|(k, _)| *k == e.agent_type).or((!s.asked.is_empty()).then_some(0));
+                let task = i.map(|i| s.asked.remove(i).1).unwrap_or_default();
+                if let Some(a) = s.agents.get_mut(&e.agent_id) {
+                    a.task = task;
+                }
             }
             "SubagentStop" => {
                 s.agents.remove(&e.agent_id);
@@ -213,6 +248,46 @@ impl Feed {
 }
 
 /// Keeps a hook file small: past 1 MB, only its last 2000 lines stay.
+/// Takes the task words out of the lines whose agent no longer runs (NFR-01.2): kept only while `keep` (the running
+/// agents' tasks and those asked for) holds them. Called when Yggdrasil starts, after reading the file.
+pub fn forget_tasks(file: &std::path::Path, keep: &[String]) {
+    let Ok(text) = std::fs::read_to_string(file) else { return };
+    let mut changed = false;
+    let lines: Vec<String> = text
+        .lines()
+        .map(|l| {
+            let Ok(serde_json::Value::Object(mut v)) = serde_json::from_str::<serde_json::Value>(l) else {
+                return l.to_string();
+            };
+            match v.get("task").and_then(|t| t.as_str()) {
+                Some(t) if !t.is_empty() && !keep.iter().any(|k| k == t) => {
+                    v.shift_remove("task");
+                    changed = true;
+                    serde_json::Value::Object(v).to_string()
+                }
+                _ => l.to_string(),
+            }
+        })
+        .collect();
+    if changed {
+        let tmp = file.with_extension("forget");
+        if std::fs::write(&tmp, lines.join("\n") + "\n").is_ok() {
+            let _ = std::fs::rename(tmp, file);
+        }
+    }
+}
+
+impl Sessions {
+    /// The task words still needed: of running agents and of those asked for.
+    pub fn tasks(&self) -> Vec<String> {
+        self.running
+            .values()
+            .flat_map(|s| s.agents.values().map(|a| a.task.clone()).chain(s.asked.iter().map(|(_, t)| t.clone())))
+            .filter(|t| !t.is_empty())
+            .collect()
+    }
+}
+
 pub fn compact(file: &std::path::Path) {
     let Ok(meta) = std::fs::metadata(file) else { return };
     if meta.len() <= 1024 * 1024 {
@@ -263,14 +338,79 @@ mod tests {
         assert_eq!(s.running["s1"].wait, Some(Wait::Answer));
     }
 
+    fn kinds(s: &Sessions) -> Vec<String> {
+        s.running["s1"].agents.values().map(|a| a.kind.clone()).collect()
+    }
+
+    fn at(name: &str, extra: &str, t: u64) -> Event {
+        Event { t, ..ev(name, extra) }
+    }
+
     #[test]
     fn uc_03_3_agents_show_while_they_run() {
         let mut s = Sessions::default();
         s.apply(&ev("UserPromptSubmit", ""));
         s.apply(&ev("SubagentStart", r#""agent_id":"a1","agent_type":"Explore","#));
-        assert_eq!(s.running["s1"].agents.values().collect::<Vec<_>>(), ["Explore"]);
+        assert_eq!(kinds(&s), ["Explore"]);
         s.apply(&ev("SubagentStop", r#""agent_id":"a1","#));
         assert!(s.running["s1"].agents.is_empty());
+    }
+
+    #[test]
+    fn uc_03_3_agents_working_after_the_turn_stay_until_their_own_stop() {
+        let mut s = Sessions::default();
+        s.apply(&ev("SubagentStart", r#""agent_id":"a1","agent_type":"Explore","#));
+        s.apply(&ev("Stop", ""));
+        assert_eq!(kinds(&s), ["Explore"], "a background agent goes on after the turn");
+        s.apply(&ev("SubagentStop", r#""agent_id":"a1","#));
+        assert!(s.running["s1"].agents.is_empty());
+    }
+
+    #[test]
+    fn uc_03_3_an_agent_shows_from_its_steps_and_leaves_when_silent() {
+        let mut s = Sessions::default();
+        // Started before Yggdrasil listened: its steps show it.
+        s.apply(&at("PostToolUse", r#""agent_id":"a2","#, 100));
+        assert_eq!(kinds(&s), ["agent"]);
+        s.apply(&at("PostToolUse", r#""agent_id":"a2","#, 100 + AGENT_SILENT));
+        assert_eq!(kinds(&s), ["agent"], "still working");
+        // Interrupted, it never says it stopped: gone once silent for too long.
+        s.apply(&at("UserPromptSubmit", "", 101 + 2 * AGENT_SILENT));
+        assert!(s.running["s1"].agents.is_empty());
+    }
+
+    #[test]
+    fn uc_03_11_each_agent_gets_the_task_it_was_given() {
+        let mut s = Sessions::default();
+        s.apply(&ev("PreToolUse", r#""subagent_type":"Explore","task":"Find the auth handler","#));
+        s.apply(&ev("PreToolUse", r#""subagent_type":"Plan","task":"Plan the migration","#));
+        s.apply(&ev("PreToolUse", r#""subagent_type":"Explore","task":"Read the tests","#));
+        s.apply(&ev("SubagentStart", r#""agent_id":"p","agent_type":"Plan","#));
+        s.apply(&ev("SubagentStart", r#""agent_id":"e1","agent_type":"Explore","#));
+        s.apply(&ev("SubagentStart", r#""agent_id":"e2","agent_type":"Explore","#));
+        let a = &s.running["s1"].agents;
+        assert_eq!(a["p"].task, "Plan the migration");
+        assert_eq!(a["e1"].task, "Find the auth handler");
+        assert_eq!(a["e2"].task, "Read the tests");
+        assert!(s.running["s1"].asked.is_empty());
+    }
+
+    #[test]
+    fn nfr_01_2_an_ended_agents_task_is_forgotten() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("e.jsonl");
+        let lines = [
+            r#"{"hook_event_name":"PreToolUse","session_id":"s1","cwd":"/v","subagent_type":"Explore","task":"Find the auth handler","t":1}"#,
+            r#"{"hook_event_name":"PreToolUse","session_id":"s1","cwd":"/v","subagent_type":"Plan","task":"Plan the migration","t":2}"#,
+            r#"{"hook_event_name":"Stop","session_id":"s1","cwd":"/v","t":3}"#,
+        ];
+        std::fs::write(&f, lines.join("\n") + "\n").unwrap();
+        forget_tasks(&f, &["Plan the migration".to_string()]);
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(!text.contains("Find the auth handler"), "{text}");
+        assert!(text.contains("Plan the migration"));
+        assert_eq!(text.lines().count(), 3);
+        assert!(text.lines().all(|l| Event::parse(l).is_some()));
     }
 
     #[test]

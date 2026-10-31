@@ -92,6 +92,7 @@ mod tests {
             state: State::Idle,
             wait: None,
             agents: Default::default(),
+            asked: Vec::new(),
             sandbox: sandbox.into(),
             pid: 0,
             tty: tty.into(),

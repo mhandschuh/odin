@@ -5,6 +5,12 @@ without a test, listed in status.md under *Next hand-check run*), each ✓ passe
 was seen. When a run fails, the fix gets a new run, on the same day too. Only added to, never rewritten; a
 criterion's newest result counts. How and when to test: test-plan.md.
 
+## 2026-10-31 · run 5 · in use · 973b7a8 (./x run) on the Mac
+
+| Criterion | Result | Seen                              |
+| --------- | :----: | --------------------------------- |
+| UC-03.3   | ✗      | No agents show under any session. |
+
 ## 2026-10-30 · run 4 · in use · 43ad460 (./x run) on the Mac
 
 | Criterion | Result | Seen                                                                                                                                                                    |
