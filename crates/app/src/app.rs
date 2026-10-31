@@ -104,6 +104,8 @@ pub struct App {
     focus_term: Option<u64>,
     confirm: Option<Confirm>,
     window_focused: bool,
+    /// Session names from their transcripts, read on as they grow (UC-03.12).
+    names: history::Names,
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     quit_hooked: bool,
     home_failed: bool,
@@ -162,6 +164,7 @@ impl App {
             focus_term: None,
             confirm: None,
             window_focused: true,
+            names: history::Names::default(),
             quit_hooked: false,
             home_failed: false,
         };
@@ -477,6 +480,7 @@ impl App {
             let Some(t) = self.terms.get_mut(id) else { continue };
             match event {
                 TermEvent::Title(text) => {
+                    t.title = text.clone();
                     let was = t.claude;
                     t.claude = match (title::state(&text), was) {
                         (None, _) => None,
@@ -1146,7 +1150,8 @@ impl App {
             }
             for e in list {
                 let (rect, resp) = row(ui, depth + 1, egui::Id::new(("earlier", &e.id)));
-                let text = format!("{}  ·  {}", short(&e.id), history::ago(e.last, now));
+                let name = e.name.clone().unwrap_or_else(|| short(&e.id));
+                let text = format!("{name}  ·  {}", history::ago(e.last, now));
                 label(ui, rect, depth + 1, icon::CLOCK_COUNTER_CLOCKWISE, p.tertiary, &text, p.secondary);
                 let resp = resp.on_hover_text("Resume");
                 if resp.clicked() {
@@ -1154,6 +1159,18 @@ impl App {
                 }
             }
         }
+    }
+
+    /// A session's name (UC-03.12): the one Alice gave it, the topic Claude shows in its terminal's title, the one
+    /// Claude gave it in its transcript, or its id. A sandbox's transcript is inside the sandbox.
+    fn session_name(&mut self, s: &Session) -> String {
+        let titles = if s.sandbox.is_empty() {
+            self.names.titles(&history::transcript(&paths::claude_projects(), &s.cwd, &s.id))
+        } else {
+            history::Titles::default()
+        };
+        let live = self.in_term.get(&s.id).and_then(|t| self.terms.get(*t)).and_then(|t| title::topic(&t.title));
+        titles.custom.or(live).or(titles.ai).unwrap_or_else(|| short(&s.id))
     }
 
     fn session_row(&mut self, ui: &mut egui::Ui, depth: usize, s: &Session, acts: &mut Vec<Act>) {
@@ -1173,7 +1190,7 @@ impl App {
         };
         let what = state_words(s.state, s.wait);
         let place = if s.sandbox.is_empty() { String::new() } else { "  ·  sandbox".into() };
-        let text = format!("{}  ·  {what}{place}", short(&s.id));
+        let text = format!("{}  ·  {what}{place}", self.session_name(s));
         label(ui, rect, depth, "", color, &text, p.text);
         let x = rect.min.x + 16.0 + depth as f32 * INDENT;
         ui.painter().text(
@@ -1224,7 +1241,8 @@ impl App {
                 State::Waiting => WAITING,
                 State::Idle => p.tertiary,
             };
-            let text = format!("Claude  ·  {}{sandbox}", state_words(state, wait));
+            let name = t.and_then(|t| title::topic(&t.title)).unwrap_or_else(|| "Claude".into());
+            let text = format!("{name}  ·  {}{sandbox}", state_words(state, wait));
             label(ui, rect, depth, "", color, &text, p.text);
             ui.painter().text(
                 egui::pos2(rect.min.x + 16.0 + depth as f32 * INDENT, rect.center().y),
@@ -1234,7 +1252,9 @@ impl App {
                 color,
             );
         } else {
-            label(ui, rect, depth, icon::TERMINAL_WINDOW, p.secondary, "Terminal", p.text);
+            // The shell's own title: its folder, or the program running in it.
+            let name = t.map(|t| t.title.trim()).filter(|n| !n.is_empty()).unwrap_or("Terminal").to_string();
+            label(ui, rect, depth, icon::TERMINAL_WINDOW, p.secondary, &name, p.text);
         }
         let resp = resp.on_hover_text("Show its terminal");
         if resp.clicked() {

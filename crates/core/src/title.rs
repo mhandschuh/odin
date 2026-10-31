@@ -15,6 +15,21 @@ pub fn state(title: &str) -> Option<State> {
     (spinner || t.starts_with(". ")).then_some(State::Working)
 }
 
+/// The topic Claude shows in its title (`✳ Fix the login test`), without the state in front; none where the title
+/// names only Claude itself (UC-03.12).
+pub fn topic(title: &str) -> Option<String> {
+    state(title)?;
+    let t = title.trim_start();
+    let rest = t.strip_prefix("* ").or_else(|| t.strip_prefix(". ")).unwrap_or_else(|| {
+        let mut c = t.chars();
+        c.next();
+        c.as_str()
+    });
+    let rest = rest.trim();
+    let generic = ["", "claude", "claude code"].contains(&rest.to_lowercase().as_str());
+    (!generic).then(|| rest.to_string())
+}
+
 /// What a notification from Claude waits for.
 pub fn wait(body: &str) -> Wait {
     if body.to_lowercase().contains("permission") { Wait::Permission } else { Wait::Answer }
@@ -35,6 +50,17 @@ mod tests {
         assert_eq!(state("~/code/vesta"), None);
         assert_eq!(state("sbx run --name my-claude-sbx"), None);
         assert_eq!(state("vim notes.md"), None);
+    }
+
+    #[test]
+    fn uc_03_12_the_topic_in_claudes_title_names_the_session() {
+        assert_eq!(topic("✳ Fix the login test").as_deref(), Some("Fix the login test"));
+        assert_eq!(topic("⠋ Fix the login test").as_deref(), Some("Fix the login test"));
+        assert_eq!(topic("◐ Fix the login test").as_deref(), Some("Fix the login test"));
+        assert_eq!(topic("* Fix the login test").as_deref(), Some("Fix the login test"));
+        assert_eq!(topic("✳ Claude Code"), None);
+        assert_eq!(topic("✳"), None);
+        assert_eq!(topic("~/code/vesta"), None, "not Claude's title");
     }
 
     #[test]

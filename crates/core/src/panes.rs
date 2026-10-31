@@ -16,6 +16,8 @@ pub struct Term {
     pub claude: Option<(State, Option<Wait>)>,
     /// A sandbox (sbx) was seen running in it.
     pub sbx: bool,
+    /// Its title, as the program in it sets it (the shell: its folder or command; Claude: its state and topic).
+    pub title: String,
 }
 
 #[derive(Debug, Default)]
@@ -32,7 +34,7 @@ impl Terms {
         self.next += 1;
         let id = self.next;
         let sbx = start == Start::Sandbox;
-        self.list.push(Term { id, project, start, tty: String::new(), claude: None, sbx });
+        self.list.push(Term { id, project, start, tty: String::new(), claude: None, sbx, title: String::new() });
         self.show(id);
         id
     }

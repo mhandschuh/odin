@@ -39,7 +39,7 @@ which terminal it is.
 
 ## Acceptance criteria
 
-- **UC-02.1** Given the project *vesta*, when Alice chooses *Terminal*, then the pane shows a new terminal whose working folder is *vesta*'s folder, it takes what she types, and it is listed under *vesta* in the tree as *Terminal*.
+- **UC-02.1** Given the project *vesta*, when Alice chooses *Terminal*, then the pane shows a new terminal whose working folder is *vesta*'s folder, it takes what she types, and it is listed under *vesta* in the tree with the title its shell gives it (its folder, or the program running), or as *Terminal* without one.
 - **UC-02.2** Given the project *vesta*, when Alice chooses *Claude*, then the pane shows a new terminal in *vesta*'s folder with Claude Code started in it, and its session shows under *vesta*.
 - **UC-02.3** Given the project *vesta*, when Alice chooses *Claude in a sandbox*, then the pane shows a new terminal in *vesta*'s folder with Claude Code started in a sandbox of the project.
 - **UC-02.4** Given an earlier session of *vesta*, when Alice chooses *Resume* on it, then the pane shows a new terminal in *vesta*'s folder with that session continued.

@@ -5,6 +5,8 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- **Sessions have names:** the name you gave with `/rename`, the topic Claude shows in its title, or the title Claude
+  gave the session, also for earlier sessions; terminals show their shell's title (folder or program).
 - **Agents show again, with their task:** each running agent shows its kind and the few words Claude gave its task
   (*Explore · Find the auth handler*), also while it works on in the background after Claude's turn.
 - **Claude's state in every terminal of the window:** Claude started by hand, also inside a sandbox (`sbx run`),

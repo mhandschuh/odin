@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -11,24 +13,89 @@ pub fn folder_key(folder: &Path) -> String {
 pub struct Earlier {
     pub id: String,
     pub last: SystemTime,
+    /// Its name (UC-03.12), if it has one.
+    pub name: Option<String>,
+}
+
+/// Where Claude keeps a session's transcript: under the folder it was started in.
+pub fn transcript(claude_projects: &Path, cwd: &Path, id: &str) -> PathBuf {
+    claude_projects.join(folder_key(cwd)).join(format!("{id}.jsonl"))
+}
+
+/// The names a transcript gives its session: the one the person gave (`/rename`) and the one Claude made up, the
+/// latest of each. Only these lines are looked at; nothing else of the transcript is read into memory for long.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Titles {
+    pub custom: Option<String>,
+    pub ai: Option<String>,
+}
+
+impl Titles {
+    fn read_lines(&mut self, text: &str) {
+        for line in text.lines() {
+            let custom = line.contains(r#""type":"custom-title""#);
+            if !custom && !line.contains(r#""type":"ai-title""#) {
+                continue;
+            }
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+            let key = if custom { "customTitle" } else { "aiTitle" };
+            if let Some(t) = v.get(key).and_then(|t| t.as_str()).map(str::trim).filter(|t| !t.is_empty()) {
+                *(if custom { &mut self.custom } else { &mut self.ai }) = Some(t.to_string());
+            }
+        }
+    }
+}
+
+/// The titles of running sessions' transcripts, read on as they grow: only what was added since the last look.
+#[derive(Debug, Default)]
+pub struct Names {
+    files: HashMap<PathBuf, (u64, Titles)>,
+}
+
+impl Names {
+    pub fn titles(&mut self, file: &Path) -> Titles {
+        let (offset, titles) = self.files.entry(file.to_path_buf()).or_default();
+        let Ok(mut f) = std::fs::File::open(file) else { return titles.clone() };
+        let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+        if len < *offset {
+            // Rewritten: from the start again.
+            *offset = 0;
+            *titles = Titles::default();
+        }
+        if len > *offset && f.seek(SeekFrom::Start(*offset)).is_ok() {
+            let mut buf = Vec::new();
+            if f.take(len - *offset).read_to_end(&mut buf).is_ok() {
+                // Up to the last complete line: the rest is still being written.
+                let end = buf.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+                titles.read_lines(&String::from_utf8_lossy(&buf[..end]));
+                *offset += end as u64;
+            }
+        }
+        titles.clone()
+    }
 }
 
 /// A project's earlier sessions, newest first, at most 10, leaving out the running ones.
 pub fn earlier(claude_projects: &Path, project: &Path, running: &[String]) -> Vec<Earlier> {
     let dir: PathBuf = claude_projects.join(folder_key(project));
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
     let mut out: Vec<Earlier> = entries
         .filter_map(Result::ok)
         .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
         .filter_map(|e| {
             let id = e.path().file_stem()?.to_string_lossy().into_owned();
             let last = e.metadata().ok()?.modified().ok()?;
-            Some(Earlier { id, last })
+            Some(Earlier { id, last, name: None })
         })
         .filter(|e| !running.contains(&e.id))
         .collect();
     out.sort_by_key(|e| std::cmp::Reverse(e.last));
     out.truncate(10);
+    let mut names = Names::default();
+    for e in &mut out {
+        let t = names.titles(&dir.join(format!("{}.jsonl", e.id)));
+        e.name = t.custom.or(t.ai);
+    }
     out
 }
 
@@ -85,5 +152,32 @@ mod tests {
         assert_eq!(ago(now - Duration::from_secs(7200), now), "2 h ago");
         assert_eq!(ago(now - Duration::from_secs(90000), now), "yesterday");
         assert_eq!(ago(now - Duration::from_secs(5 * 86400), now), "5 days ago");
+    }
+
+    #[test]
+    fn uc_03_12_a_transcript_names_its_session_and_is_read_on_as_it_grows() {
+        let d = tempfile::tempdir().unwrap();
+        let f = transcript(d.path(), Path::new("/code/vesta"), "s1");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        let mut names = Names::default();
+        assert_eq!(names.titles(&f), Titles::default(), "no transcript yet");
+        std::fs::write(
+            &f,
+            concat!(
+                r#"{"type":"user","message":{"content":"my secret plan"}}"#,
+                "\n",
+                r#"{"type":"ai-title","aiTitle":"Fix the login test","sessionId":"s1"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        let t = names.titles(&f);
+        assert_eq!((t.custom, t.ai.as_deref()), (None, Some("Fix the login test")));
+        use std::io::Write;
+        let mut w = std::fs::OpenOptions::new().append(true).open(&f).unwrap();
+        w.write_all(br#"{"type":"custom-title","customTitle":"Login","sessionId":"s1"}"#).unwrap();
+        assert_eq!(names.titles(&f).custom, None, "a line still being written waits");
+        w.write_all(b"\n").unwrap();
+        assert_eq!(names.titles(&f).custom.as_deref(), Some("Login"));
     }
 }
