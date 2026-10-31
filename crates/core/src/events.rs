@@ -247,7 +247,6 @@ impl Feed {
     }
 }
 
-/// Keeps a hook file small: past 1 MB, only its last 2000 lines stay.
 /// Takes the task words out of the lines whose agent no longer runs (NFR-01.2): kept only while `keep` (the running
 /// agents' tasks and those asked for) holds them. Called when Yggdrasil starts, after reading the file.
 pub fn forget_tasks(file: &std::path::Path, keep: &[String]) {
@@ -288,6 +287,7 @@ impl Sessions {
     }
 }
 
+/// Keeps a hook file small: past 1 MB, only its last 2000 lines stay.
 pub fn compact(file: &std::path::Path) {
     let Ok(meta) = std::fs::metadata(file) else { return };
     if meta.len() <= 1024 * 1024 {
