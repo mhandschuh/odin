@@ -27,7 +27,7 @@ Yggdrasil shows and opens; the terminal and the agent do the work. Not part of i
 - git worktrees, branches, merging
 - remote machines over SSH
 - agents other than Claude Code (later, if wanted)
-- accounts, a network service, analytics
+- accounts, a service of its own, analytics; the network only where the person turns it on (the limits per model)
 
 ## Principles
 

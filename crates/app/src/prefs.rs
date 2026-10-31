@@ -7,11 +7,15 @@ pub struct Prefs {
     pub notifications: bool,
     /// The connect offer was answered (UC-05): it isn't shown again.
     pub offer_answered: bool,
+    /// The status bar with Claude's limits (UC-06).
+    pub limits: bool,
+    /// The weekly limits per model, from Anthropic (UC-06.3): the only network Yggdrasil uses, off until turned on.
+    pub model_limits: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { notifications: true, offer_answered: false }
+        Prefs { notifications: true, offer_answered: false, limits: true, model_limits: false }
     }
 }
 

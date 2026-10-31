@@ -11,6 +11,7 @@ use yggdrasil_core::events::{self, Change, Feed, Session, Sessions, State, Wait}
 use yggdrasil_core::ghostty::{self, Failure, Start};
 use yggdrasil_core::history::{self, Earlier};
 use yggdrasil_core::hook;
+use yggdrasil_core::limits::{self, Limits};
 use yggdrasil_core::panes::{self, Side, Terms};
 use yggdrasil_core::sbx::Sandbox;
 use yggdrasil_core::tree::{self, At, Node, Tree};
@@ -42,6 +43,8 @@ enum Msg {
     },
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     QuitAsked,
+    /// Anthropic's answer about the limits, or why there is none (UC-06.3).
+    Usage(Result<String, String>),
 }
 
 enum Act {
@@ -108,6 +111,11 @@ pub struct App {
     window_focused: bool,
     /// The pane's area in the last frame, for resizing splits by keys.
     pane: panes::Rect,
+    /// Claude's limits: from its status line, and from Anthropic while *Model limits* is on (UC-06).
+    status_limits: Option<Limits>,
+    usage_limits: Option<Limits>,
+    usage_asked: Option<u64>,
+    usage_error: Option<String>,
     /// Session names from their transcripts, read on as they grow (UC-03.12).
     names: history::Names,
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -170,6 +178,10 @@ impl App {
             window_focused: true,
             pane: panes::Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 },
             names: history::Names::default(),
+            status_limits: None,
+            usage_limits: None,
+            usage_asked: None,
+            usage_error: None,
             quit_hooked: false,
             home_failed: false,
         };
@@ -186,8 +198,72 @@ impl App {
             events::forget_tasks(&f, &keep);
         }
         app.refresh_hooks();
+        app.read_limits();
         app.ask_sandboxes();
         app
+    }
+
+    fn read_limits(&mut self) {
+        self.status_limits = std::fs::read_to_string(paths::limits()).ok().and_then(|t| limits::from_status_line(&t));
+    }
+
+    /// Asks Anthropic for the models' limits when it's time (UC-06.3, NFR-03): only while turned on, every 5 minutes.
+    fn ask_usage(&mut self) {
+        let on = self.prefs.limits && self.prefs.model_limits;
+        let now = now_secs();
+        if limits::due(on, self.usage_asked, now) {
+            self.usage_asked = Some(now);
+            let (tx, ctx) = (self.tx.clone(), self.ctx.clone());
+            std::thread::spawn(move || {
+                let _ = tx.send(Msg::Usage(crate::usage::fetch(now)));
+                ctx.request_repaint();
+            });
+        }
+        if on && let Some(at) = self.usage_asked {
+            self.ctx.request_repaint_after(Duration::from_secs((at + limits::ASK_EVERY).saturating_sub(now).max(1)));
+        }
+    }
+
+    /// The status bar (UC-06): each limit with its share used and when it starts over, marked from 80 %.
+    fn limits_bar(&self, ui: &mut egui::Ui) {
+        let p = theme::current(ui.ctx());
+        let usage = self.usage_limits.as_ref().filter(|_| self.prefs.model_limits);
+        let l = limits::merge(self.status_limits.as_ref(), usage);
+        let now = now_secs();
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 18.0;
+            if l.meters.is_empty() {
+                ui.label(egui::RichText::new("Claude's limits show once Claude has run.").size(11.5).color(p.tertiary));
+            }
+            for m in &l.meters {
+                let resets = m.resets_at.map(|r| format!("  ·  resets {}", clock(r, now, false))).unwrap_or_default();
+                let color = if m.percent >= limits::WARN { WAITING } else { p.secondary };
+                let text = format!("{} {:.0}%{resets}", m.name, m.percent);
+                let r = ui.label(egui::RichText::new(text).size(11.5).color(color));
+                if let Some(at) = m.resets_at {
+                    r.on_hover_text(format!(
+                        "{}: {:.0}% used, starts over {}",
+                        m.name,
+                        m.percent,
+                        clock(at, now, true)
+                    ));
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(e) = self.usage_error.as_ref().filter(|_| self.prefs.model_limits) {
+                    ui.label(egui::RichText::new("Model limits unavailable").size(11.5).color(p.tertiary))
+                        .on_hover_text(e);
+                }
+                if l.at != 0 && now.saturating_sub(l.at) >= 120 {
+                    let at = SystemTime::UNIX_EPOCH + Duration::from_secs(l.at);
+                    ui.label(
+                        egui::RichText::new(format!("as of {}", history::ago(at, SystemTime::now())))
+                            .size(11.5)
+                            .color(p.tertiary),
+                    );
+                }
+            });
+        });
     }
 
     /// A newer Yggdrasil may listen to more steps or write its lines differently: where it's connected, the script and
@@ -309,7 +385,20 @@ impl App {
 
     fn handle(&mut self, msg: Msg) {
         match msg {
-            Msg::Files => self.read_events(true),
+            Msg::Files => {
+                self.read_events(true);
+                self.read_limits();
+            }
+            Msg::Usage(result) => match result {
+                Ok(body) => match limits::from_usage(&body, now_secs()) {
+                    Some(l) => {
+                        self.usage_limits = Some(l);
+                        self.usage_error = None;
+                    }
+                    None => self.usage_error = Some("Anthropic's answer held no limits.".into()),
+                },
+                Err(e) => self.usage_error = Some(e),
+            },
             Msg::Exited => {
                 self.sessions.prune(system::alive);
                 self.history.clear();
@@ -727,7 +816,7 @@ impl App {
         let result = if on {
             hook::connect(&paths::claude_settings(), &paths::app_dir())
         } else {
-            hook::disconnect(&paths::claude_settings())
+            hook::disconnect(&paths::claude_settings(), &paths::app_dir())
         };
         match result {
             Ok(()) => self.connected = on,
@@ -950,6 +1039,14 @@ impl eframe::App for App {
             terminal::release_focus();
         }
         self.order.clear();
+        self.ask_usage();
+        // First, so it spans the whole window's width.
+        if self.prefs.limits {
+            egui::Panel::bottom("limits")
+                .exact_size(24.0)
+                .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::symmetric(12, 0)))
+                .show(ui, |ui| self.limits_bar(ui));
+        }
         egui::Panel::left("tree")
             .resizable(true)
             .default_size(320.0)
@@ -979,8 +1076,10 @@ impl eframe::App for App {
                 egui::Frame::new().fill(p.control).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
                     ui.label(egui::RichText::new("Show your Claude sessions here?").strong());
                     ui.label(
-                        "Yggdrasil adds a small hook to Claude Code's settings (~/.claude/settings.json). It reports the kind of \
-                         each step, never what you write or what Claude does. Settings can take it out again.",
+                        "Yggdrasil adds a small hook and a status line to Claude Code's settings (~/.claude/settings.json). \
+                         The hook reports the kind of each step and the few words naming an agent's task, never what you \
+                         write or what Claude does; the status line keeps your plan's limits, and yours still shows. \
+                         Settings can take both out again.",
                     );
                     ui.horizontal(|ui| {
                         if ui.button("Connect").clicked() {
@@ -1466,6 +1565,27 @@ impl App {
                     self.prefs.save(&paths::prefs());
                 }
                 ui.add_space(10.0);
+                ui.label(egui::RichText::new("Claude's limits").strong());
+                if ui.checkbox(&mut self.prefs.limits, "Show them at the bottom of the window").changed() {
+                    self.prefs.save(&paths::prefs());
+                }
+                ui.add_enabled_ui(self.prefs.limits, |ui| {
+                    if ui.checkbox(&mut self.prefs.model_limits, "Limits per model (Fable)").changed() {
+                        self.prefs.save(&paths::prefs());
+                        self.usage_asked = None;
+                        self.usage_limits = None;
+                        self.usage_error = None;
+                    }
+                });
+                ui.label(
+                    egui::RichText::new(
+                        "Asks Anthropic (api.anthropic.com) every 5 minutes, signed in with your Claude login. macOS \
+                         asks once whether Yggdrasil may read that login.",
+                    )
+                    .small()
+                    .color(theme::current(ui.ctx()).tertiary),
+                );
+                ui.add_space(10.0);
                 ui.label(egui::RichText::new("Claude Code").strong());
                 if self.connected {
                     ui.label("Connected: Claude sessions on this Mac report their steps.");
@@ -1523,6 +1643,28 @@ fn highlight(ui: &egui::Ui, rect: Rect, terms: &Terms, id: u64) {
         ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
     } else if terms.is_visible(id) {
         ui.painter().rect_filled(rect, CornerRadius::same(6), p.hover);
+    }
+}
+
+/// A reset time in local time: `14:30` today, `Tue 14:30` on another day; `long`: `Tue Nov 4 at 14:30`.
+fn clock(at: u64, now: u64, long: bool) -> String {
+    let local = |t: u64| {
+        let t = t as libc::time_t;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        unsafe { libc::localtime_r(&t, &mut tm) };
+        tm
+    };
+    let (a, n) = (local(at), local(now));
+    const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let time = format!("{:02}:{:02}", a.tm_hour, a.tm_min);
+    let day = DAYS[a.tm_wday.clamp(0, 6) as usize];
+    if long {
+        format!("{day} {} {} at {time}", MONTHS[a.tm_mon.clamp(0, 11) as usize], a.tm_mday)
+    } else if (a.tm_year, a.tm_yday) == (n.tm_year, n.tm_yday) {
+        time
+    } else {
+        format!("{day} {time}")
     }
 }
 

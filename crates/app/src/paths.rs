@@ -13,6 +13,11 @@ pub fn events() -> PathBuf {
     app_dir().join("events.jsonl")
 }
 
+/// Claude's limits as its status line hands them over (UC-06).
+pub fn limits() -> PathBuf {
+    app_dir().join("limits.json")
+}
+
 pub fn tree() -> PathBuf {
     app_dir().join("tree.json")
 }

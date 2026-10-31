@@ -11,6 +11,7 @@ mod terminal;
 #[path = "terminal_stub.rs"]
 mod terminal;
 mod theme;
+mod usage;
 mod watch;
 
 use eframe::egui;

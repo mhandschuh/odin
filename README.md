@@ -29,7 +29,10 @@ What it is and isn't: [spec/vision.md](spec/vision.md). Next to Orca and Ghostty
 
 ## Services it talks to
 
-None. Yggdrasil uses no network; it reads the hook's files and asks Ghostty and `sbx` on the Mac.
+Only one, and only when turned on: with *Limits per model* in the settings (off until you turn it on), Yggdrasil asks
+Anthropic's usage endpoint (`https://api.anthropic.com/api/oauth/usage`) every 5 minutes for the week's limit per
+model, signed in with your Claude login from the Keychain (the Mac's `security` and `curl` do it). Otherwise it uses no
+network: it reads the hook's and the status line's files and asks Ghostty and `sbx` on the Mac.
 
 ## Build and run
 

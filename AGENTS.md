@@ -17,4 +17,7 @@ procedure (../.claude/skills/new-wish).
   `core::panes` (ADR 0005, 0008); Claude's state from a terminal's title is `core::title`, the app a session runs in
   is `core::procs` (ADR 0006).
   `./x ghostty` builds the library on the Mac (Zig 0.17+, Sentry off). What Ghostty does can only be tried on the Mac.
+- Claude's limits (ADR 0009): `core::limits` and the status line script (`statusline.sh`, which runs the person's own
+  status line too). `usage.rs` is the only network Yggdrasil uses, behind *Limits per model*; the privacy test
+  allows nothing else (NFR-03).
 - `./x check` must pass before every commit. Hand checks go into spec/test-journal.md (the test-run procedure).

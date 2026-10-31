@@ -15,6 +15,7 @@ Each word has one meaning in the spec and in the app.
 | **Tab**                 | Terminals of the pane shown together, split side by side or one above the other.                                                             |
 | **Split**               | One of the terminals in a tab, with the room it takes there.                                                                                 |
 | **Sandbox**             | A Docker sandbox (sbx) running Claude for a project, isolated from the Mac.                                                                  |
+| **Limit**               | How much of the Claude plan may be used in a window (5 hours, 7 days, a model's week); it starts over at its reset.                          |
 | **Earlier session**     | A session of the project that ended; it can be resumed.                                                                                      |
 | **Person (actor)**      | The user at their Mac.                                                                                                                       |
 | **Claude Code (actor)** | The agent, reporting its steps to Yggdrasil.                                                                                                 |

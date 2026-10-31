@@ -2,6 +2,7 @@ use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
 pub const SCRIPT: &str = include_str!("hook.sh");
+pub const STATUS_SCRIPT: &str = include_str!("statusline.sh");
 
 /// The steps Yggdrasil listens to (ADR 0003); PreToolUse only for the agent tool (`AGENT_TOOLS`).
 pub const EVENTS: [&str; 10] = [
@@ -24,6 +25,69 @@ pub const AGENT_TOOLS: &str = "Task|Agent";
 /// The command in Claude's user settings: the script in the app's folder, as on the Mac.
 pub fn mac_command() -> String {
     r#"sh "$HOME/Library/Application Support/Yggdrasil/hook.sh" mac"#.to_string()
+}
+
+/// Claude's status line: Yggdrasil's script, which keeps the limits and runs the person's own (UC-06).
+pub fn status_command() -> String {
+    r#"sh "$HOME/Library/Application Support/Yggdrasil/statusline.sh""#.to_string()
+}
+
+/// Settings with Yggdrasil's status line in place of the person's, and theirs (to keep and to run) when it was
+/// another one; its padding stays.
+pub fn add_status(settings: &Value, command: &str) -> (Value, Option<Value>) {
+    let mut s = settings.as_object().cloned().unwrap_or_default();
+    let current = s.get("statusLine").cloned();
+    let ours = current.as_ref().and_then(|c| c.get("command")).and_then(Value::as_str) == Some(command);
+    if ours {
+        return (Value::Object(s), None);
+    }
+    let mut line = Map::new();
+    line.insert("type".into(), "command".into());
+    line.insert("command".into(), command.into());
+    if let Some(p) = current.as_ref().and_then(|c| c.get("padding")) {
+        line.insert("padding".into(), p.clone());
+    }
+    s.insert("statusLine".into(), Value::Object(line));
+    (Value::Object(s), current)
+}
+
+/// Settings with the person's status line back where Yggdrasil's was (none: none).
+pub fn remove_status(settings: &Value, command: &str, own: Option<&Value>) -> Value {
+    let mut s = settings.as_object().cloned().unwrap_or_default();
+    let ours = s.get("statusLine").and_then(|c| c.get("command")).and_then(Value::as_str) == Some(command);
+    if ours {
+        match own {
+            Some(o) => {
+                s.insert("statusLine".into(), o.clone());
+            }
+            None => {
+                s.shift_remove("statusLine");
+            }
+        }
+    }
+    Value::Object(s)
+}
+
+/// The person's own status line, kept while Yggdrasil's stands in for it: as it was in the settings, and its command
+/// for the script to run.
+fn keep_own(app_dir: &Path, own: Option<&Value>) -> Result<(), Error> {
+    let (json, sh) = (app_dir.join("own-statusline.json"), app_dir.join("own-statusline.sh"));
+    match own {
+        Some(o) => {
+            let cmd = o.get("command").and_then(Value::as_str).unwrap_or("");
+            std::fs::write(&json, o.to_string()).map_err(|e| Error::Io(e.to_string()))?;
+            std::fs::write(&sh, format!("{cmd}\n")).map_err(|e| Error::Io(e.to_string()))
+        }
+        None => {
+            let _ = std::fs::remove_file(json);
+            let _ = std::fs::remove_file(sh);
+            Ok(())
+        }
+    }
+}
+
+fn kept_own(app_dir: &Path) -> Option<Value> {
+    std::fs::read_to_string(app_dir.join("own-statusline.json")).ok().and_then(|t| serde_json::from_str(&t).ok())
 }
 
 /// The command in a project's local settings: the script inside the project, which a sandbox sees too.
@@ -140,9 +204,9 @@ fn change(file: &Path, f: impl Fn(&Value) -> Value) -> Result<(), Error> {
     }
     if existed.is_some()
         && after.as_object().is_some_and(Map::is_empty)
-        && before.as_object().is_some_and(|m| m.len() == 1 && m.contains_key("hooks"))
+        && before.as_object().is_some_and(|m| m.keys().all(|k| k == "hooks" || k == "statusLine"))
     {
-        // The file held only our hooks: it goes, as it wasn't there before connecting.
+        // The file held only what Yggdrasil added: it goes, as it wasn't there before connecting.
         return std::fs::remove_file(file).map_err(|e| Error::Io(e.to_string()));
     }
     write(file, &after)
@@ -165,11 +229,22 @@ pub fn connect(claude_settings: &Path, app_dir: &Path) -> Result<(), Error> {
     }
     std::fs::create_dir_all(app_dir).map_err(|e| Error::Io(e.to_string()))?;
     std::fs::write(app_dir.join("hook.sh"), SCRIPT).map_err(|e| Error::Io(e.to_string()))?;
-    change(claude_settings, |s| add(s, &mac_command()))
+    std::fs::write(app_dir.join("statusline.sh"), STATUS_SCRIPT).map_err(|e| Error::Io(e.to_string()))?;
+    // The person's status line as it is now: theirs if it's another one (they may have changed it since), none if
+    // it's gone, unchanged if Yggdrasil's stands in for it.
+    let before = read(claude_settings)?.unwrap_or_else(|| Value::Object(Map::new()));
+    let current = before.get("statusLine");
+    let ours = current.and_then(|c| c.get("command")).and_then(Value::as_str) == Some(status_command().as_str());
+    if !ours {
+        keep_own(app_dir, current)?;
+    }
+    change(claude_settings, |s| add_status(&add(s, &mac_command()), &status_command()).0)
 }
 
-pub fn disconnect(claude_settings: &Path) -> Result<(), Error> {
-    change(claude_settings, |s| remove(s, &mac_command()))
+pub fn disconnect(claude_settings: &Path, app_dir: &Path) -> Result<(), Error> {
+    let own = kept_own(app_dir);
+    change(claude_settings, |s| remove_status(&remove(s, &mac_command()), &status_command(), own.as_ref()))?;
+    keep_own(app_dir, None)
 }
 
 /// Sandbox sessions of a project: the script into `.claude/yggdrasil/` (a folder git ignores), the hook into the
@@ -237,12 +312,12 @@ mod tests {
         std::fs::write(&file, &text).unwrap();
         connect(&file, &d.path().join("app")).unwrap();
         assert!(is_added(&read(&file).unwrap().unwrap(), &mac_command()));
-        disconnect(&file).unwrap();
+        disconnect(&file, &d.path().join("app")).unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // A settings file that didn't exist isn't left behind.
         let none = d.path().join("none.json");
         connect(&none, &d.path().join("app")).unwrap();
-        disconnect(&none).unwrap();
+        disconnect(&none, &d.path().join("app")).unwrap();
         assert!(!none.exists());
         // The same for a project's sandbox sessions.
         let project = d.path().join("vesta");
@@ -364,6 +439,83 @@ mod tests {
         assert_eq!(events.len(), 2, "{text}");
         assert_eq!((events[0].task.as_str(), events[0].subagent_type.as_str()), ("Find the auth handler", "Explore"));
         assert_eq!(events[1].agent_id, "a1");
+    }
+
+    #[test]
+    fn uc_06_4_the_persons_own_status_line_is_kept_run_and_given_back() {
+        let d = tempfile::tempdir().unwrap();
+        let app = d.path().join("app");
+        let file = d.path().join("settings.json");
+        let mut theirs = own();
+        theirs.as_object_mut().unwrap().insert(
+            "statusLine".into(),
+            serde_json::json!({ "type": "command", "command": "bash ~/.claude/mine.sh", "padding": 2 }),
+        );
+        let text = serde_json::to_string_pretty(&theirs).unwrap() + "\n";
+        std::fs::write(&file, &text).unwrap();
+        connect(&file, &app).unwrap();
+        let s = read(&file).unwrap().unwrap();
+        assert_eq!(s["statusLine"]["command"], status_command());
+        assert_eq!(s["statusLine"]["padding"], 2, "their padding stays");
+        assert_eq!(std::fs::read_to_string(app.join("own-statusline.sh")).unwrap(), "bash ~/.claude/mine.sh\n");
+        // Connecting again (every start) keeps theirs.
+        connect(&file, &app).unwrap();
+        assert_eq!(std::fs::read_to_string(app.join("own-statusline.sh")).unwrap(), "bash ~/.claude/mine.sh\n");
+        disconnect(&file, &app).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text, "exactly as before");
+        assert!(!app.join("own-statusline.sh").exists());
+        // Changed by hand while connected: the new one is theirs from the next start on.
+        connect(&file, &app).unwrap();
+        let mut s = read(&file).unwrap().unwrap();
+        s["statusLine"] = serde_json::json!({ "type": "command", "command": "npx ccusage statusline" });
+        write(&file, &s).unwrap();
+        connect(&file, &app).unwrap();
+        assert_eq!(std::fs::read_to_string(app.join("own-statusline.sh")).unwrap(), "npx ccusage statusline\n");
+        // Without one of their own, none comes back.
+        let plain = d.path().join("plain.json");
+        std::fs::write(&plain, "{}\n").unwrap();
+        let app2 = d.path().join("app2");
+        connect(&plain, &app2).unwrap();
+        assert!(!app2.join("own-statusline.sh").exists());
+        disconnect(&plain, &app2).unwrap();
+        // Holding only what Yggdrasil added, the file goes, as one that held nothing.
+        assert!(read(&plain).unwrap().is_none_or(|s| s.get("statusLine").is_none()));
+    }
+
+    fn status(input: &str, dir: &Path) -> std::process::Output {
+        let script = dir.join("statusline.sh");
+        std::fs::write(&script, STATUS_SCRIPT).unwrap();
+        let mut c = Command::new("sh");
+        c.arg(&script).env("YGGDRASIL_DIR", dir).stdin(Stdio::piped()).stdout(Stdio::piped());
+        let mut child = c.spawn().unwrap();
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        child.wait_with_output().unwrap()
+    }
+
+    #[test]
+    fn uc_06_1_the_status_line_keeps_only_the_limits_and_runs_the_persons_own() {
+        let d = tempfile::tempdir().unwrap();
+        let input = r#"{"session_id":"s1","cwd":"/code/secret-project","model":{"id":"x"},"cost":{"total_cost_usd":3.2},"rate_limits":{"five_hour":{"used_percentage":42,"resets_at":1793470000},"seven_day":{"used_percentage":18,"resets_at":1793900000},"seven_day_opus":{"used_percentage":3}}}"#;
+        let out = status(input, d.path());
+        assert!(out.status.success());
+        assert!(out.stdout.is_empty(), "without their own, nothing is shown");
+        let kept = std::fs::read_to_string(d.path().join("limits.json")).unwrap();
+        assert!(!kept.contains("secret") && !kept.contains("cost") && !kept.contains("opus"), "{kept}");
+        let l = crate::limits::from_status_line(&kept).unwrap();
+        assert_eq!(l.meters.iter().map(|m| m.percent).collect::<Vec<_>>(), [42.0, 18.0]);
+        // Unchanged: not written again.
+        std::fs::write(d.path().join("limits.json"), "kept").unwrap();
+        status(input, d.path());
+        assert_eq!(std::fs::read_to_string(d.path().join("limits.json")).unwrap(), "kept");
+        // Theirs gets the same input and shows.
+        std::fs::write(d.path().join("own-statusline.sh"), "grep -o secret-project; echo shown\n").unwrap();
+        let out = status(input, d.path());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "secret-project\nshown\n");
+        // Without limits (an API key), nothing is written.
+        let e = tempfile::tempdir().unwrap();
+        status(r#"{"session_id":"s1"}"#, e.path());
+        assert!(!e.path().join("limits.json").exists());
     }
 
     #[test]

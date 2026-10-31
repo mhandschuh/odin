@@ -10,3 +10,4 @@ One file per decision: context, decision, consequences. Never rewrite an accepte
 - [0006. Claude's state from the pane's terminals; the app a session runs in from its processes](0006-state-from-the-terminal.md)
 - [0007. Agents with their task, followed by their own steps](0007-agent-tasks.md)
 - [0008. Tabs and splits in the pane, driven by Ghostty's keybindings](0008-tabs-and-splits.md)
+- [0009. Claude's limits from its status line, the models' from Anthropic on request](0009-limits-bar.md)

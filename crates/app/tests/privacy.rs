@@ -1,5 +1,6 @@
-//! Yggdrasil uses no network (NFR-03): no library in it can open a connection, and the code doesn't reach for
-//! sockets. A new dependency that brings an HTTP client, TLS or a network runtime fails this test.
+//! Yggdrasil uses no network but one request (NFR-03): no library in it can open a connection, the code doesn't reach
+//! for sockets, and the Mac's curl is called from one file only, `usage.rs`, for Anthropic's usage endpoint alone
+//! (ADR 0009). A new dependency that brings an HTTP client, TLS or a network runtime, or a second address, fails it.
 
 const NETWORK_CRATES: [&str; 12] = [
     "reqwest",
@@ -66,6 +67,15 @@ fn nfr_03_1_no_library_or_code_can_open_a_connection() {
                         "{} opens a socket",
                         path.display()
                     );
+                    let usage = path.file_name().is_some_and(|n| n == "usage.rs");
+                    assert!(usage || !src.contains("/usr/bin/curl"), "{} calls curl", path.display());
+                    if usage {
+                        let urls: Vec<&str> = src.match_indices("https://").map(|(i, _)| &src[i..]).collect();
+                        assert!(
+                            urls.iter().all(|u| u.starts_with("https://api.anthropic.com/api/oauth/usage")),
+                            "usage.rs asks only Anthropic's usage endpoint"
+                        );
+                    }
                 }
             }
         }

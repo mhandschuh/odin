@@ -2,6 +2,7 @@ pub mod events;
 pub mod ghostty;
 pub mod history;
 pub mod hook;
+pub mod limits;
 pub mod panes;
 pub mod procs;
 pub mod sbx;
