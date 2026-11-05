@@ -39,7 +39,7 @@ case "${1:-help}" in
   check) "$0" lint && "$0" test && "$0" mac && echo "check: ok" ;;
   run)
     shift
-    # On the Mac as Yggdrasil.app, so it has its icon and the ember accent in standard windows (../docs/design.md).
+    # On the Mac as Odin.app, so it has its icon and the ember accent in standard windows (../docs/design.md).
     if [[ "$(uname)" == Darwin ]]; then
       app=$("$0" bundle | tail -1)
       open -n "$app" --args "$@"
@@ -76,20 +76,20 @@ case "${1:-help}" in
       GHOSTTY_LIB=$("$0" ghostty); export GHOSTTY_LIB
     fi
     cargo build -p yggdrasil --release ${2:+--target $2}
-    app="$target_dir/Yggdrasil.app"
+    app="$target_dir/Odin.app"
     rm -rf "$app" && mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp "$target_dir"/${2:+$2/}release/yggdrasil "$app/Contents/MacOS/"
     cp crates/app/Info.plist "$app/Contents/"
     v=$(perl -ne 'print $1 if /^version = "(.*)"/' crates/app/Cargo.toml)
     perl -pi -e "s#(<key>CFBundleShortVersionString</key><string>)[^<]*#\${1}$v#; s#(<key>CFBundleVersion</key><string>)[^<]*#\${1}$v#" "$app/Contents/Info.plist"
     if command -v iconutil >/dev/null; then
-      set="$target_dir/Yggdrasil.iconset"
+      set="$target_dir/Odin.iconset"
       rm -rf "$set" && mkdir -p "$set"
       for s in 16 32 128 256 512; do
         sips -z $s $s assets/icon.png --out "$set/icon_${s}x${s}.png" >/dev/null
         sips -z $((s * 2)) $((s * 2)) assets/icon.png --out "$set/icon_${s}x${s}@2x.png" >/dev/null
       done
-      iconutil -c icns "$set" -o "$app/Contents/Resources/Yggdrasil.icns"
+      iconutil -c icns "$set" -o "$app/Contents/Resources/Odin.icns"
     fi
     [ -x ../tools/mac-accent.sh ] && ../tools/mac-accent.sh "$app"
     # Signed like the release (the "Pantheon Mac" certificate when it's there), so macOS keeps permissions such as Full
@@ -100,7 +100,7 @@ case "${1:-help}" in
     echo "$app"
     ;;
   release)
-    # ./x release 0.2.0 (on the Mac): version, CHANGELOG section, checks, signed bundle → yggdrasil-release + the tap's cask.
+    # ./x release 0.2.0 (on the Mac): version, CHANGELOG section, checks, signed bundle → odin-release + the tap's cask.
     v=${2:?usage: ./x release <version>}
     notes=$(awk '/^## Unreleased/{on=1; next} /^## /{on=0} on' CHANGELOG.md | sed '/./,$!d')
     [ -n "$(printf '%s' "$notes" | tr -d '[:space:]')" ] || { echo 'No release notes under "## Unreleased" in CHANGELOG.md.' >&2; exit 1; }
@@ -109,7 +109,7 @@ case "${1:-help}" in
     cargo update -q -w
     awk -v v="$v" -v d="$(date +%F)" '/^## Unreleased/{print; print ""; print "## " v " (" d ")"; next} {print}' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
     app=$("$0" bundle | tail -1)
-    ../tools/mac-release.sh Yggdrasil "$v" "$app"
+    ../tools/mac-release.sh Odin "$v" "$app"
     echo "Commit the version: git add -A && git commit -m \"chore: release $v\""
     ;;
   *)

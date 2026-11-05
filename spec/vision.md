@@ -7,11 +7,11 @@ sandbox, each starting subagents of its own. Which one is working, which one wai
 belongs to which project gets lost among the windows. Workspaces made for this (Orca and similar) bring their own
 terminal, their own editor, worktrees, a browser and much more, and replace the terminal one is used to.
 
-## What Yggdrasil is
+## What Odin is
 
 **A tree of the person's projects, with the agents running in them**: projects in groups of the person's own, and under
 each project its Claude sessions and their running agents, live, with what each is doing. A project opens in the
-person's own terminal, Ghostty: in a pane of Yggdrasil's window, drawn by Ghostty itself with the person's Ghostty
+person's own terminal, Ghostty: in a pane of Odin's window, drawn by Ghostty itself with the person's Ghostty
 settings, or in Ghostty's own window. A click on a session brings its terminal to the front; a notification says when
 one waits. Sessions in a sandbox show the same way.
 
@@ -21,7 +21,7 @@ The user, on their Mac, working with Claude Code in Ghostty, locally and in Dock
 
 ## Out of scope, on purpose
 
-Yggdrasil shows and opens; the terminal and the agent do the work. Not part of it:
+Odin shows and opens; the terminal and the agent do the work. Not part of it:
 
 - a terminal engine of its own (the terminal pane is Ghostty's), an editor, diffs, a browser
 - git worktrees, branches, merging
@@ -31,7 +31,7 @@ Yggdrasil shows and opens; the terminal and the agent do the work. Not part of i
 
 ## Principles
 
-- **The person's own terminal.** Ghostty is the terminal, in Yggdrasil's window or its own, always with the person's
+- **The person's own terminal.** Ghostty is the terminal, in Odin's window or its own, always with the person's
   Ghostty settings.
-- **Live, but idle when idle.** What the agents do shows at once; while nothing happens, Yggdrasil does nothing.
+- **Live, but idle when idle.** What the agents do shows at once; while nothing happens, Odin does nothing.
 - **Nothing private kept.** It records which session did what kind of step, never what was written or done.

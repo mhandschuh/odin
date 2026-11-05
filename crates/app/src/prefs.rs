@@ -9,7 +9,7 @@ pub struct Prefs {
     pub offer_answered: bool,
     /// The status bar with Claude's limits (UC-06).
     pub limits: bool,
-    /// The weekly limits per model, from Anthropic (UC-06.3): the only network Yggdrasil uses, off until turned on.
+    /// The weekly limits per model, from Anthropic (UC-06.3): the only network Odin uses, off until turned on.
     pub model_limits: bool,
     /// The tree's width, as dragged (UC-01.8).
     pub tree_width: f32,

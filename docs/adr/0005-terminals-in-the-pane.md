@@ -6,7 +6,7 @@
 ## Context
 The pane of ADR 0004 worked as a test with one shell. The person wants it connected: the tree on the left, the
 terminal of what they pick on the right, like agent workspaces (Orca, cmux) and like a sidebar in any Mac app. Terminals
-drawn by Yggdrasil end with it, unlike tabs in Ghostty's own window.
+drawn by Odin end with it, unlike tabs in Ghostty's own window.
 
 ## Decision
 - Every *Terminal*, *Claude*, *Claude in a sandbox* and *Resume* opens a new terminal in the pane; the pane shows one at
@@ -19,11 +19,11 @@ drawn by Yggdrasil end with it, unlike tabs in Ghostty's own window.
   home folder, as Ghostty shows a window.
 - ⌘T, ⌘W and ⌘1 to ⌘9 act on the pane's terminals, from the tree or the terminal; ⌘Q, ⌘H and ⌘M stay the menu's.
 - Ghostty tells whether a program runs in a terminal (more than a shell at its prompt): closing such a terminal or
-  quitting asks first. The app menu's Quit is redirected to Yggdrasil for that.
+  quitting asks first. The app menu's Quit is redirected to Odin for that.
 - The installed Ghostty's resources (`/Applications/Ghostty.app`, the same version) give the pane's shells Ghostty's
   shell integration and terminfo; without them Ghostty can't tell a waiting shell from a running program.
 
 ## Consequences
-Sessions are one click away, in one window, in Ghostty's own rendering. Quitting Yggdrasil ends what runs in its
+Sessions are one click away, in one window, in Ghostty's own rendering. Quitting Odin ends what runs in its
 terminals; the question before quitting and *Resume* make that safe. egui's dialogs would be under the terminal's view,
 so the terminal steps aside while one is open. Off the Mac there is no pane, and projects open in Ghostty's window.

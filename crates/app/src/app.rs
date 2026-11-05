@@ -290,7 +290,7 @@ impl App {
         });
     }
 
-    /// A newer Yggdrasil may listen to more steps or write its lines differently: where it's connected, the script and
+    /// A newer Odin may listen to more steps or write its lines differently: where it's connected, the script and
     /// the settings are brought up to date (unchanged settings aren't touched).
     fn refresh_hooks(&self) {
         if self.connected {
@@ -448,7 +448,7 @@ impl App {
                 Ok(r) if r == "none" => {
                     self.message = Some(Message {
                         title: "Where is this session?".into(),
-                        body: "Yggdrasil can't tell which terminal this session runs in.".into(),
+                        body: "Odin can't tell which terminal this session runs in.".into(),
                         automation: false,
                     })
                 }
@@ -484,13 +484,13 @@ impl App {
     fn failed(&mut self, f: Failure) {
         self.message = Some(match f {
             Failure::NotAllowed => Message {
-                title: "Yggdrasil may not control Ghostty".into(),
-                body: "To open and find terminals, allow Yggdrasil to control Ghostty in System Settings → Privacy & Security → Automation.".into(),
+                title: "Odin may not control Ghostty".into(),
+                body: "To open and find terminals, allow Odin to control Ghostty in System Settings → Privacy & Security → Automation.".into(),
                 automation: true,
             },
             Failure::NotInstalled => Message {
                 title: "Ghostty isn't installed".into(),
-                body: "Yggdrasil opens projects in Ghostty. Install it from ghostty.org, then try again.".into(),
+                body: "Odin opens projects in Ghostty. Install it from ghostty.org, then try again.".into(),
                 automation: false,
             },
             Failure::Other(e) => Message { title: "Ghostty didn't answer".into(), body: e, automation: false },
@@ -802,7 +802,7 @@ impl App {
             let app = (pid != 0)
                 .then(|| procs::app_of(pid, &system::processes()))
                 .flatten()
-                .filter(|a| a.file_name().is_some_and(|n| n != "Yggdrasil.app"));
+                .filter(|a| a.file_name().is_some_and(|n| n != "Odin.app" && n != "Yggdrasil.app"));
             let result = match &app {
                 // Another terminal app (Orca, Terminal): only the app can be brought to the front.
                 Some(a) if a.file_name().is_some_and(|n| n != "Ghostty.app") => {
@@ -1099,7 +1099,7 @@ impl eframe::App for App {
             }
             let inner = if mac { Rect::from_min_max(egui::pos2(row.min.x + LIGHTS, row.min.y), row.max) } else { row };
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-                ui.label(egui::RichText::new("Yggdrasil").strong().size(15.0));
+                ui.label(egui::RichText::new("Odin").strong().size(15.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(icon::GEAR).on_hover_text("Settings  ⌘,").clicked() {
                         self.settings_open = true;
@@ -1117,7 +1117,7 @@ impl eframe::App for App {
                 egui::Frame::new().fill(p.control).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
                     ui.label(egui::RichText::new("Show your Claude sessions here?").strong());
                     ui.label(
-                        "Yggdrasil adds a small hook and a status line to Claude Code's settings (~/.claude/settings.json). \
+                        "Odin adds a small hook and a status line to Claude Code's settings (~/.claude/settings.json). \
                          The hook reports the kind of each step and the few words naming an agent's task, never what you \
                          write or what Claude does; the status line keeps your plan's limits, and yours still shows. \
                          Settings can take both out again.",
@@ -1381,7 +1381,7 @@ impl App {
                 ui.close();
             }
             ui.separator();
-            if ui.button("Remove from Yggdrasil").on_hover_text("The folder stays as it is").clicked() {
+            if ui.button("Remove from Odin").on_hover_text("The folder stays as it is").clicked() {
                 acts.push(Act::Remove(at.clone()));
                 ui.close();
             }
@@ -1551,7 +1551,7 @@ impl App {
                 "Close",
             ),
             Confirm::Quit(n) => (
-                "Quit Yggdrasil?".to_string(),
+                "Quit Odin?".to_string(),
                 format!(
                     "{} still {} a program. Quitting ends {}; Claude sessions can be continued later with Resume.",
                     if *n == 1 { "A terminal".to_string() } else { format!("{n} terminals") },
@@ -1633,7 +1633,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(
                         "Asks Anthropic (api.anthropic.com) every 5 minutes, signed in with your Claude login. macOS \
-                         asks once whether Yggdrasil may read that login.",
+                         asks once whether Odin may read that login.",
                     )
                     .small()
                     .color(theme::current(ui.ctx()).tertiary),

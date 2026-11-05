@@ -1,5 +1,5 @@
 #!/bin/sh
-# Yggdrasil's hook for Claude Code: one line per step, with the kind of step, the ids and kinds, the folder and the
+# Odin's hook for Claude Code: one line per step, with the kind of step, the ids and kinds, the folder and the
 # time, and the few words naming an agent's task; never prompts, answers, file contents or commands. It never fails
 # Claude: whatever goes wrong, it exits 0.
 # $1 is "mac" (from Claude's user settings) or "sandbox" (from a project's local settings): a step is written by

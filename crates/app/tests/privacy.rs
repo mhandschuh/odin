@@ -1,4 +1,4 @@
-//! Yggdrasil uses no network but one request (NFR-03): no library in it can open a connection, the code doesn't reach
+//! Odin uses no network but one request (NFR-03): no library in it can open a connection, the code doesn't reach
 //! for sockets, and the Mac's curl is called from one file only, `usage.rs`, for Anthropic's usage endpoint alone
 //! (ADR 0009). A new dependency that brings an HTTP client, TLS or a network runtime, or a second address, fails it.
 

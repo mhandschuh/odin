@@ -4,7 +4,7 @@
 - Date: 2026-10-30
 
 ## Context
-Yggdrasil is a Mac app with one window: a tree of projects, sessions and agents. Pantheon's Mac apps are Rust
+Odin is a Mac app with one window: a tree of projects, sessions and agents. Pantheon's Mac apps are Rust
 (Heimdall: egui; Brokkr: AppKit through objc2). The other choice was Swift with AppKit.
 
 ## Decision

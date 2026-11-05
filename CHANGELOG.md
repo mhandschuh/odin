@@ -5,6 +5,9 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- Renamed: Yggdrasil is now **Odin**, who sees all the worlds from his throne and whose ravens come back with news of
+  everything (as the app does with projects and their agents). A new icon, Odin's eye. Settings, hooks and data stay
+  where they were.
 - **A tidier window:** the tree's edge can be dragged to make it wider or narrower, and it keeps its width; the name
   and its buttons sit in the top row beside the traffic lights, which moves the window as a title bar does.
 - **Claude's limits at the bottom of the window:** the 5-hour and 7-day limits with the share used and when they

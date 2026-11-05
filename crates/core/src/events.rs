@@ -136,7 +136,7 @@ impl Sessions {
             s.tty = e.tty.clone();
         }
         let before = s.state;
-        // A step inside an agent: it works (also one started before Yggdrasil listened).
+        // A step inside an agent: it works (also one started before Odin listened).
         if !e.agent_id.is_empty() && e.hook_event_name != "SubagentStop" {
             let agent = s.agents.entry(e.agent_id.clone()).or_insert_with(|| Agent {
                 kind: if e.agent_type.is_empty() { "agent".into() } else { e.agent_type.clone() },
@@ -248,7 +248,7 @@ impl Feed {
 }
 
 /// Takes the task words out of the lines whose agent no longer runs (NFR-01.2): kept only while `keep` (the running
-/// agents' tasks and those asked for) holds them. Called when Yggdrasil starts, after reading the file.
+/// agents' tasks and those asked for) holds them. Called when Odin starts, after reading the file.
 pub fn forget_tasks(file: &std::path::Path, keep: &[String]) {
     let Ok(text) = std::fs::read_to_string(file) else { return };
     let mut changed = false;
@@ -369,7 +369,7 @@ mod tests {
     #[test]
     fn uc_03_3_an_agent_shows_from_its_steps_and_leaves_when_silent() {
         let mut s = Sessions::default();
-        // Started before Yggdrasil listened: its steps show it.
+        // Started before Odin listened: its steps show it.
         s.apply(&at("PostToolUse", r#""agent_id":"a2","#, 100));
         assert_eq!(kinds(&s), ["agent"]);
         s.apply(&at("PostToolUse", r#""agent_id":"a2","#, 100 + AGENT_SILENT));

@@ -1,4 +1,4 @@
-# Yggdrasil
+# Odin
 
 A tree of your projects with the Claude Code sessions running in them, for the Mac. Projects sit in groups of your
 own; under each project its sessions show live (working, waiting, idle) with their running agents, also when they
@@ -25,11 +25,11 @@ What it is and isn't: [spec/vision.md](spec/vision.md). Next to Orca and Ghostty
 - **A project's local settings** (`.claude/settings.local.json`), only with *Sandbox Sessions* turned on for it: the
   same hook for Claude in the project's sandboxes, writing into `.claude/yggdrasil/` in the project (a folder git
   ignores).
-- **Permissions:** macOS asks once whether Yggdrasil may control Ghostty (Automation) and may send notifications.
+- **Permissions:** macOS asks once whether Odin may control Ghostty (Automation) and may send notifications.
 
 ## Services it talks to
 
-Only one, and only when turned on: with *Limits per model* in the settings (off until you turn it on), Yggdrasil asks
+Only one, and only when turned on: with *Limits per model* in the settings (off until you turn it on), Odin asks
 Anthropic's usage endpoint (`https://api.anthropic.com/api/oauth/usage`) every 5 minutes for the week's limit per
 model, signed in with your Claude login from the Keychain (the Mac's `security` and `curl` do it). Otherwise it uses no
 network: it reads the hook's and the status line's files and asks Ghostty and `sbx` on the Mac.
@@ -39,9 +39,9 @@ network: it reads the hook's and the status line's files and asks Ghostty and `s
 You need Rust (stable) and, on the Mac, Ghostty 1.4 or later and Claude Code.
 
 ```sh
-./x run       # builds Yggdrasil.app and starts it (on the Mac)
+./x run       # builds Odin.app and starts it (on the Mac)
 ./x check     # lint, tests, spec status, the macOS type check
-./x bundle    # target/Yggdrasil.app
+./x bundle    # target/Odin.app
 ```
 
 Decisions: [docs/adr/](docs/adr/). Spec and its status: [spec/](spec/), [spec/status.md](spec/status.md).

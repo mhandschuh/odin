@@ -1,4 +1,4 @@
-//! The AppleScript Yggdrasil sends to Ghostty (ADR 0002), and what comes back.
+//! The AppleScript Odin sends to Ghostty (ADR 0002), and what comes back.
 use std::path::Path;
 
 /// What a new tab starts with.
@@ -97,7 +97,7 @@ pub fn normal_tty(tty: &str) -> String {
 
 #[derive(Debug, PartialEq)]
 pub enum Failure {
-    /// macOS doesn't allow Yggdrasil to control Ghostty (Automation).
+    /// macOS doesn't allow Odin to control Ghostty (Automation).
     NotAllowed,
     NotInstalled,
     Other(String),

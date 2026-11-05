@@ -1,4 +1,4 @@
-//! The terminals in the pane of Yggdrasil's window (UC-02, ADR 0005, ADR 0008): tabs of terminals split side by side
+//! The terminals in the pane of Odin's window (UC-02, ADR 0005, ADR 0008): tabs of terminals split side by side
 //! or one above the other, which one has the focus, what shows when one closes, and which session runs in which. Free
 //! of the platform: the Mac draws them (the app's terminal.rs).
 use crate::events::{Session, State, Wait};

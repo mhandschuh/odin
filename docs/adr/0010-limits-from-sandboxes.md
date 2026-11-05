@@ -10,7 +10,7 @@ handed its limits over. Asking Anthropic every few minutes instead would be late
 often; starting a Claude to read them would use the plan and could start a 5-hour window.
 
 ## Decision
-- *Sandbox sessions* put Yggdrasil's status line into the project's local settings too, next to its hook, unless the
+- *Sandbox sessions* put Odin's status line into the project's local settings too, next to its hook, unless the
   project has a status line of its own there. In a sandbox the script writes the limits into the project
   (`.claude/yggdrasil/limits.json`); on the Mac, where the project's settings stand in for the user's, it acts like
   the user settings' one and runs the person's own status line.

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 pub const SCRIPT: &str = include_str!("hook.sh");
 pub const STATUS_SCRIPT: &str = include_str!("statusline.sh");
 
-/// The steps Yggdrasil listens to (ADR 0003); PreToolUse only for the agent tool (`AGENT_TOOLS`).
+/// The steps Odin listens to (ADR 0003); PreToolUse only for the agent tool (`AGENT_TOOLS`).
 pub const EVENTS: [&str; 10] = [
     "SessionStart",
     "SessionEnd",
@@ -27,7 +27,7 @@ pub fn mac_command() -> String {
     r#"sh "$HOME/Library/Application Support/Yggdrasil/hook.sh" mac"#.to_string()
 }
 
-/// Claude's status line: Yggdrasil's script, which keeps the limits and runs the person's own (UC-06).
+/// Claude's status line: Odin's script, which keeps the limits and runs the person's own (UC-06).
 pub fn status_command() -> String {
     r#"sh "$HOME/Library/Application Support/Yggdrasil/statusline.sh""#.to_string()
 }
@@ -37,7 +37,7 @@ pub fn project_status_command() -> String {
     r#"sh "$CLAUDE_PROJECT_DIR/.claude/yggdrasil/statusline.sh""#.to_string()
 }
 
-/// Settings with Yggdrasil's status line in place of the person's, and theirs (to keep and to run) when it was
+/// Settings with Odin's status line in place of the person's, and theirs (to keep and to run) when it was
 /// another one; its padding stays.
 pub fn add_status(settings: &Value, command: &str) -> (Value, Option<Value>) {
     let mut s = settings.as_object().cloned().unwrap_or_default();
@@ -56,7 +56,7 @@ pub fn add_status(settings: &Value, command: &str) -> (Value, Option<Value>) {
     (Value::Object(s), current)
 }
 
-/// Settings with the person's status line back where Yggdrasil's was (none: none).
+/// Settings with the person's status line back where Odin's was (none: none).
 pub fn remove_status(settings: &Value, command: &str, own: Option<&Value>) -> Value {
     let mut s = settings.as_object().cloned().unwrap_or_default();
     let ours = s.get("statusLine").and_then(|c| c.get("command")).and_then(Value::as_str) == Some(command);
@@ -73,7 +73,7 @@ pub fn remove_status(settings: &Value, command: &str, own: Option<&Value>) -> Va
     Value::Object(s)
 }
 
-/// The person's own status line, kept while Yggdrasil's stands in for it: as it was in the settings, and its command
+/// The person's own status line, kept while Odin's stands in for it: as it was in the settings, and its command
 /// for the script to run.
 fn keep_own(app_dir: &Path, own: Option<&Value>) -> Result<(), Error> {
     let (json, sh) = (app_dir.join("own-statusline.json"), app_dir.join("own-statusline.sh"));
@@ -211,13 +211,13 @@ fn change(file: &Path, f: impl Fn(&Value) -> Value) -> Result<(), Error> {
         && after.as_object().is_some_and(Map::is_empty)
         && before.as_object().is_some_and(|m| m.keys().all(|k| k == "hooks" || k == "statusLine"))
     {
-        // The file held only what Yggdrasil added: it goes, as it wasn't there before connecting.
+        // The file held only what Odin added: it goes, as it wasn't there before connecting.
         return std::fs::remove_file(file).map_err(|e| Error::Io(e.to_string()));
     }
     write(file, &after)
 }
 
-/// Whether Claude's user settings hold Yggdrasil's hook.
+/// Whether Claude's user settings hold Odin's hook.
 pub fn is_connected(claude_settings: &Path) -> bool {
     read(claude_settings).ok().flatten().is_some_and(|s| is_added(&s, &mac_command()))
 }
@@ -236,7 +236,7 @@ pub fn connect(claude_settings: &Path, app_dir: &Path) -> Result<(), Error> {
     std::fs::write(app_dir.join("hook.sh"), SCRIPT).map_err(|e| Error::Io(e.to_string()))?;
     std::fs::write(app_dir.join("statusline.sh"), STATUS_SCRIPT).map_err(|e| Error::Io(e.to_string()))?;
     // The person's status line as it is now: theirs if it's another one (they may have changed it since), none if
-    // it's gone, unchanged if Yggdrasil's stands in for it.
+    // it's gone, unchanged if Odin's stands in for it.
     let before = read(claude_settings)?.unwrap_or_else(|| Value::Object(Map::new()));
     let current = before.get("statusLine");
     let ours = current.and_then(|c| c.get("command")).and_then(Value::as_str) == Some(status_command().as_str());
@@ -495,7 +495,7 @@ mod tests {
         connect(&plain, &app2).unwrap();
         assert!(!app2.join("own-statusline.sh").exists());
         disconnect(&plain, &app2).unwrap();
-        // Holding only what Yggdrasil added, the file goes, as one that held nothing.
+        // Holding only what Odin added, the file goes, as one that held nothing.
         assert!(read(&plain).unwrap().is_none_or(|s| s.get("statusLine").is_none()));
     }
 

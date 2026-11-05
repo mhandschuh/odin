@@ -48,7 +48,7 @@ define_class!(
     }
 );
 
-/// Notifications need the app to run as Yggdrasil.app; started any other way, there are none.
+/// Notifications need the app to run as Odin.app; started any other way, there are none.
 fn center() -> Option<Retained<UNUserNotificationCenter>> {
     NSBundle::mainBundle().bundleIdentifier()?;
     Some(UNUserNotificationCenter::currentNotificationCenter())
@@ -137,7 +137,7 @@ define_class!(
     }
 );
 
-/// The app menu's Quit (⌘Q) asks Yggdrasil first, so it can say which terminals would end (UC-02.12). True once the
+/// The app menu's Quit (⌘Q) asks Odin first, so it can say which terminals would end (UC-02.12). True once the
 /// menu was there to change; until then Quit quits at once.
 pub fn ask_before_quit(asked: impl Fn() + Send + Sync + 'static) -> bool {
     let Some(mtm) = MainThreadMarker::new() else { return false };

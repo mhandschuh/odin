@@ -30,7 +30,7 @@ struct Pane {
     size: (u32, u32),
 }
 
-/// What a key in a terminal asks of Yggdrasil rather than of its shell (UC-02.11).
+/// What a key in a terminal asks of Odin rather than of its shell (UC-02.11).
 pub enum Cmd {
     New,
     Close,
@@ -515,7 +515,7 @@ extern "C" fn action(_: g::App, target: g::Target, action: g::Action) -> bool {
         g::ACTION_QUIT => Some(TermEvent::Quit),
         _ if target.tag != g::TARGET_SURFACE => None,
         g::ACTION_SET_TITLE => text_at(p).map(TermEvent::Title),
-        // Shown by Yggdrasil instead, unless the terminal is in front (UC-04).
+        // Shown by Odin instead, unless the terminal is in front (UC-04).
         g::ACTION_DESKTOP_NOTIFICATION => Some(TermEvent::Notify(text_at(action.action[1]).unwrap_or_default())),
         g::ACTION_NEW_SPLIT => side(p, [Side::Right, Side::Down, Side::Left, Side::Up]).map(TermEvent::Split),
         g::ACTION_GOTO_SPLIT => match p & 0xFFFF_FFFF {
@@ -601,7 +601,7 @@ extern "C" fn write_clipboard(_: *mut c_void, _: c_int, contents: *const g::Clip
 }
 
 // Only noted here: Ghostty may ask while it's busy with the terminal (in a tick), so it's closed on the next frame.
-// `running`: a program still runs in it (⌘W while Claude works), so Yggdrasil asks first; false when its shell ended.
+// `running`: a program still runs in it (⌘W while Claude works), so Odin asks first; false when its shell ended.
 extern "C" fn close_surface(userdata: *mut c_void, running: bool) {
     ENDED.with(|e| e.borrow_mut().push((userdata as u64, running)));
     wakeup(std::ptr::null_mut());

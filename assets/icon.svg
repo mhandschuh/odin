@@ -1,17 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Odin's eye: he sees all nine worlds from his throne (the app sees all projects and their sessions). -->
   <rect x="64" y="64" width="896" height="896" rx="200" fill="#26262a"/>
+  <g transform="translate(0 44)">
   <g fill="none" stroke="#f0904a" stroke-linecap="round" stroke-linejoin="round">
-    <!-- trunk -->
-    <path d="M512 760 V430" stroke-width="56"/>
-    <!-- branches -->
-    <path d="M512 520 L360 400 M512 470 L664 360 M512 430 L512 300" stroke-width="40"/>
-    <path d="M360 400 L300 330 M360 400 L280 420 M664 360 L740 300 M664 360 L748 400" stroke-width="28"/>
-    <!-- roots -->
-    <path d="M512 760 L400 830 M512 760 L624 830 M512 760 L512 850" stroke-width="32"/>
+    <!-- the eye's outline -->
+    <path d="M196 512 C 300 348, 400 300, 512 300 C 624 300, 724 348, 828 512 C 724 676, 624 724, 512 724 C 400 724, 300 676, 196 512 Z" stroke-width="44"/>
+    <!-- lashes above, like rays -->
+    <path d="M512 220 V170 M370 248 L346 204 M654 248 L678 204 M248 312 L212 278 M776 312 L812 278" stroke-width="30"/>
   </g>
-  <g fill="#f0904a">
-    <circle cx="512" cy="280" r="40"/>
-    <circle cx="290" cy="320" r="32"/><circle cx="270" cy="425" r="28"/>
-    <circle cx="752" cy="290" r="32"/><circle cx="760" cy="405" r="28"/>
+  <!-- the iris and the pupil -->
+  <circle cx="512" cy="512" r="128" fill="#f0904a"/>
+  <circle cx="512" cy="512" r="52" fill="#26262a"/>
+  <circle cx="548" cy="474" r="18" fill="#f0904a"/>
   </g>
 </svg>

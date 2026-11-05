@@ -1,16 +1,16 @@
-# Yggdrasil's specification
+# Odin's specification
 
-Yggdrasil is described spec first: this folder says **what** Yggdrasil does, in plain words, and nothing about **how** (no
+Odin is described spec first: this folder says **what** Odin does, in plain words, and nothing about **how** (no
 languages, libraries, servers or file formats; those decisions are in `docs/adr/`). Someone with entirely different
 tools should be able to build the same app from this folder alone.
 
-Written on 2026-10-20 from what Yggdrasil already does (versions up to 0.3.0 and the unreleased changes), so that every Pantheon app is described the same way; criteria that a test already proves name that test.
+Written on 2026-10-20 from what Odin already does (versions up to 0.3.0 and the unreleased changes), so that every Pantheon app is described the same way; criteria that a test already proves name that test.
 
 | File                               | What it holds                                                                                     |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
 | [vision.md](vision.md)             | The problem, who it is for, what is in and what is deliberately out                               |
 | [glossary.md](glossary.md)         | The words used here, each with one meaning, and the actors                                        |
-| [stakeholders.md](stakeholders.md) | Who has an interest in Yggdrasil and what follows from it                                         |
+| [stakeholders.md](stakeholders.md) | Who has an interest in Odin and what follows from it                                              |
 | [use-cases/](use-cases/)           | One file per use case: goal, actors, trigger, flow, extensions, guarantee, acceptance criteria    |
 | [requirements.md](requirements.md) | Functional (FR) and non-functional (NFR) requirements, each traced to the criteria that verify it |
 | [test-plan.md](test-plan.md)       | How it is tested: levels, devices, when, release criteria                                         |

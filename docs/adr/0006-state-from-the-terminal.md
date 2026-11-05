@@ -11,7 +11,7 @@ Clicking a session that runs in another terminal app (Orca) brought some Ghostty
 saying so opened behind it.
 
 ## Decision
-- Ghostty's library reports each terminal's title changes and desktop notifications to Yggdrasil. Claude's title
+- Ghostty's library reports each terminal's title changes and desktop notifications to Odin. Claude's title
   carries its state, as Orca reads it: `✳` (or `* `) at rest, a spinner while it works (braille dots, quarter circles
   since Claude 2.1.228, `. ` in plain text). Its notification says it waits, and for what. Read in `core::title`.
 - A terminal of the pane with Claude in it but no reporting session shows that state on its row; where a reporting

@@ -1,6 +1,6 @@
 # Test plan
 
-How Yggdrasil is tested against its spec: which levels, where, when, and how results are recorded.
+How Odin is tested against its spec: which levels, where, when, and how results are recorded.
 
 ## Scope
 

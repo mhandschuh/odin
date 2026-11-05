@@ -10,10 +10,10 @@ working directory, pid and tty. Embedding Ghostty (libghostty) isn't an option y
 contrast, brings its own terminal.
 
 ## Decision
-Yggdrasil runs AppleScript through `osascript`: it opens tabs (a window when none is open) with the project's
+Odin runs AppleScript through `osascript`: it opens tabs (a window when none is open) with the project's
 folder as working directory and `claude`, `sbx run claude` or `claude --resume <id>` as initial input, and focuses
 the terminal whose tty is the session's. macOS asks once for the permission to control Ghostty (Automation);
-without it, Yggdrasil says so and opens that setting.
+without it, Odin says so and opens that setting.
 
 ## Consequences
 No terminal code of our own. Depends on Ghostty 1.4 or later and its AppleScript staying as it is; a change there

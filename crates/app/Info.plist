@@ -2,17 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Yggdrasil</string>
-  <key>CFBundleDisplayName</key><string>Yggdrasil</string>
+  <key>CFBundleName</key><string>Odin</string>
+  <key>CFBundleDisplayName</key><string>Odin</string>
   <key>CFBundleIdentifier</key><string>dev.yggdrasil.app</string>
   <key>CFBundleExecutable</key><string>yggdrasil</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleIconFile</key><string>Yggdrasil</string>
+  <key>CFBundleIconFile</key><string>Odin</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>0.1.0</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <!-- Shown when macOS asks whether Yggdrasil may control Ghostty (ADR 0002). -->
-  <key>NSAppleEventsUsageDescription</key><string>Yggdrasil opens your projects in Ghostty and brings a session's terminal to the front.</string>
+  <!-- Shown when macOS asks whether Odin may control Ghostty (ADR 0002). -->
+  <key>NSAppleEventsUsageDescription</key><string>Odin opens your projects in Ghostty and brings a session's terminal to the front.</string>
 </dict>
 </plist>

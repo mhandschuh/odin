@@ -26,7 +26,7 @@
 
 ## Success guarantee
 
-The tree shows the person's projects as they arranged them, also after Yggdrasil is started again; no folder is
+The tree shows the person's projects as they arranged them, also after Odin is started again; no folder is
 changed by it.
 
 ## Acceptance criteria
@@ -34,8 +34,8 @@ changed by it.
 - **UC-01.1** Given an empty tree, when Alice adds the folder *~/code/vesta*, then the tree shows the project *vesta* at its top level.
 - **UC-01.2** Given the project *vesta* in the tree, when Alice adds the same folder again, then no second project appears, and *vesta* is selected.
 - **UC-01.3** Given the projects *vesta* and *moneta*, when Alice makes the group *Apps* and drags both into it, then the tree shows *Apps* with *vesta* and *moneta* inside, in the order she dropped them; a group dragged into another group goes inside it the same way.
-- **UC-01.4** Given a tree with groups and projects, when Yggdrasil is quit and started again, then the tree is exactly as it was.
+- **UC-01.4** Given a tree with groups and projects, when Odin is quit and started again, then the tree is exactly as it was.
 - **UC-01.5** Given the group *Apps* holding *vesta* inside the group *Work*, when Alice removes *Apps*, then *vesta* is in *Work* where *Apps* was; the folders on the disk are untouched.
 - **UC-01.6** Given the project *old*, when its folder is deleted on the disk, then *old* stays in the tree, marked as missing, until Alice removes it.
 - **UC-01.7** Given the group *Apps*, when Alice renames it to *Mobile*, then the tree shows *Mobile* in the same place with the same contents.
-- **UC-01.8** Given Yggdrasil's window, when Alice drags the edge between the tree and the terminals, then the tree gets wider or narrower with it, between 240 and 560 points, and has the same width after Yggdrasil starts again.
+- **UC-01.8** Given Odin's window, when Alice drags the edge between the tree and the terminals, then the tree gets wider or narrower with it, between 240 and 560 points, and has the same width after Odin starts again.

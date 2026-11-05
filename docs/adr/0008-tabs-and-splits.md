@@ -5,7 +5,7 @@
 
 ## Context
 In Ghostty the person splits with ⌘D and ⌘⇧D, opens tabs with ⌘T, and moves, resizes, evens out and zooms splits with
-keys of their own Ghostty settings. The pane showed one terminal at a time, and Yggdrasil caught ⌘T, ⌘W and ⌘1 to ⌘9
+keys of their own Ghostty settings. The pane showed one terminal at a time, and Odin caught ⌘T, ⌘W and ⌘1 to ⌘9
 itself, so changed keybindings didn't apply.
 
 ## Decision
@@ -14,8 +14,8 @@ itself, so changed keybindings didn't apply.
   zooming and the tabs' order are in the core and tested on Linux.
 - Keys pressed in a terminal go to Ghostty, except the menu's (⌘Q, ⌘H, ⌘M) and the settings (⌘,). Ghostty's
   keybindings come back as actions (new split, go to split, resize, equalize, zoom, new tab, go to tab, close), which
-  Yggdrasil carries out: the person's own keys apply. ⌘W closes through Ghostty, which says whether a program still
-  runs, and Yggdrasil asks then.
+  Odin carries out: the person's own keys apply. ⌘W closes through Ghostty, which says whether a program still
+  runs, and Odin asks then.
 - A new split or tab starts from Ghostty's inherited config of the terminal it came from: its current folder and font
   size, as in Ghostty.
 - Each terminal is a row in the tree (ADR 0005); its tab shows when it's clicked, with the focus on it. ⌘1 to ⌘9 go to

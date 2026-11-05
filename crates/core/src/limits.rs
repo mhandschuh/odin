@@ -40,7 +40,7 @@ fn meter(name: &str, v: &Value) -> Option<Meter> {
     Some(Meter { name: name.into(), percent: percent as f32, resets_at: reset(v.get("resets_at")) })
 }
 
-/// The file Yggdrasil's status line writes: `{"t":…,"rate_limits":{"five_hour":{…},"seven_day":{…}}}`.
+/// The file Odin's status line writes: `{"t":…,"rate_limits":{"five_hour":{…},"seven_day":{…}}}`.
 pub fn from_status_line(text: &str) -> Option<Limits> {
     let v: Value = serde_json::from_str(text.trim()).ok()?;
     let r = v.get("rate_limits")?;

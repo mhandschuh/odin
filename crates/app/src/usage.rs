@@ -1,4 +1,4 @@
-//! The only network Yggdrasil uses (NFR-03, ADR 0009): Claude's limits per model (Fable) from Anthropic's usage
+//! The only network Odin uses (NFR-03, ADR 0009): Claude's limits per model (Fable) from Anthropic's usage
 //! endpoint, signed in with the person's Claude login, only while *Model limits* is turned on. The Mac's own `security`
 //! and `curl` do it: the login goes to curl on its input, never on its command line, and is never written down.
 use std::io::Write;
@@ -13,7 +13,7 @@ pub fn fetch(now: u64) -> Result<String, String> {
         .output()
         .map_err(|_| "Claude's login can't be read on this Mac.".to_string())?;
     if !out.status.success() {
-        return Err("Claude's login can't be read: sign in to Claude Code, and allow Yggdrasil when macOS asks.".into());
+        return Err("Claude's login can't be read: sign in to Claude Code, and allow Odin when macOS asks.".into());
     }
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).map_err(|_| "Claude's login can't be read.".to_string())?;
@@ -38,7 +38,7 @@ pub fn fetch(now: u64) -> Result<String, String> {
     }
     let out = child.wait_with_output().map_err(|_| "Anthropic didn't answer.".to_string())?;
     if !out.status.success() {
-        return Err("Anthropic didn't answer; Yggdrasil asks again in 5 minutes.".into());
+        return Err("Anthropic didn't answer; Odin asks again in 5 minutes.".into());
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Yggdrasil's status line for Claude Code (UC-06, ADR 0009, ADR 0010): of what Claude hands over, it keeps only the
-# plan's limits (the 5-hour and 7-day windows: share used, reset time), for Yggdrasil's status bar, and writes them only
+# Odin's status line for Claude Code (UC-06, ADR 0009, ADR 0010): of what Claude hands over, it keeps only the
+# plan's limits (the 5-hour and 7-day windows: share used, reset time), for Odin's status bar, and writes them only
 # when they change. Then it runs the person's own status line, if they have one, so Claude shows that as before. It
 # never fails Claude.
-# In a sandbox (from the project's local settings) it writes into the project, which Yggdrasil reads on the Mac, and
+# In a sandbox (from the project's local settings) it writes into the project, which Odin reads on the Mac, and
 # there's no status line of the person's to run. On the Mac the project's copy acts like the one in the user settings,
 # which the project's settings stand in for.
 if [ -n "${SANDBOX_NAME:-}" ]; then
