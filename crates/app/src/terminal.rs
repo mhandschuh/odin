@@ -28,6 +28,10 @@ struct Pane {
     surface: g::Surface,
     view: Retained<TermView>,
     size: (u32, u32),
+    /// The backing scale and screen it was last drawn for: a window moved to a screen with another scale needs both
+    /// told to Ghostty again, or the terminal keeps drawing for the old one (tiny or blurry text).
+    scale: f64,
+    display: u32,
 }
 
 /// What a key in a terminal asks of Odin rather than of its shell (UC-02.11).
@@ -695,7 +699,7 @@ pub fn open(id: u64, folder: &std::path::Path, input: Option<&str>, from: Option
         g::ghostty_surface_set_content_scale(surface, scale, scale);
         g::ghostty_surface_set_occlusion(surface, false);
     }
-    PANES.with(|p| p.borrow_mut().push(Pane { id, surface, view, size: (0, 0) }));
+    PANES.with(|p| p.borrow_mut().push(Pane { id, surface, view, size: (0, 0), scale, display: 0 }));
     Ok(())
 }
 
@@ -755,9 +759,19 @@ fn is_first_responder(view: &TermView) -> bool {
 pub fn layout(shown: &[(u64, egui::Rect)]) {
     // Nothing of PANES is held while Ghostty works: it may call back.
     let panes: Vec<Pane> = PANES.with(|p| {
-        p.borrow().iter().map(|p| Pane { id: p.id, surface: p.surface, view: p.view.clone(), size: p.size }).collect()
+        p.borrow()
+            .iter()
+            .map(|p| Pane {
+                id: p.id,
+                surface: p.surface,
+                view: p.view.clone(),
+                size: p.size,
+                scale: p.scale,
+                display: p.display,
+            })
+            .collect()
     });
-    for Pane { id, surface: s, view, size } in panes {
+    for Pane { id, surface: s, view, size, scale: was_scale, display: was_display } in panes {
         let rect = shown.iter().find(|(x, _)| *x == id).map(|(_, r)| *r);
         let on = rect.is_some();
         if view.isHidden() == on {
@@ -773,22 +787,76 @@ pub fn layout(shown: &[(u64, egui::Rect)]) {
             NSSize::new(rect.width() as f64, rect.height() as f64),
         ));
         let scale = view.window().map_or(2.0, |w| w.backingScaleFactor());
+        let display = view.window().map_or(0, |w| display_of(&w));
         let px = ((rect.width() as f64 * scale) as u32, (rect.height() as f64 * scale) as u32);
-        if px != size {
+        let rescaled = scale != was_scale;
+        if display != was_display {
+            // Ghostty times its frames to this screen's refresh (as its own app does on a change of screen).
+            unsafe { g::ghostty_surface_set_display_id(s, display) };
+        }
+        if rescaled {
+            set_layer_scale(&view, scale);
+        }
+        if px != size || rescaled {
             unsafe {
                 g::ghostty_surface_set_content_scale(s, scale, scale);
                 g::ghostty_surface_set_size(s, px.0, px.1);
                 g::ghostty_surface_refresh(s);
             }
+        }
+        if px != size || rescaled || display != was_display {
             PANES.with(|p| {
                 if let Some(p) = p.borrow_mut().iter_mut().find(|p| p.id == id) {
                     p.size = px;
+                    p.scale = scale;
+                    p.display = display;
                 }
             });
         }
     }
     if let Ok(app) = app() {
         unsafe { g::ghostty_app_tick(app) };
+    }
+}
+
+/// The layer Ghostty draws into keeps the scale it got when the terminal started; on a screen with another scale the
+/// compositor would shrink or enlarge what Ghostty draws, so it's set to the window's, without Core Animation's
+/// implicit animation (as Ghostty's own app does in `viewDidChangeBackingProperties`).
+fn set_layer_scale(view: &TermView, scale: f64) {
+    unsafe {
+        let layer: *mut AnyObject = msg_send![view, layer];
+        if layer.is_null() {
+            return;
+        }
+        let tx = objc2::runtime::AnyClass::get(c"CATransaction");
+        if let Some(tx) = tx {
+            let _: () = msg_send![tx, begin];
+            let _: () = msg_send![tx, setDisableActions: true];
+        }
+        let _: () = msg_send![layer, setContentsScale: scale];
+        if let Some(tx) = tx {
+            let _: () = msg_send![tx, commit];
+        }
+    }
+}
+
+/// The id of the screen the window is on (`NSScreenNumber`), 0 when it can't be told.
+fn display_of(window: &objc2_app_kit::NSWindow) -> u32 {
+    unsafe {
+        let screen: *mut AnyObject = msg_send![window, screen];
+        if screen.is_null() {
+            return 0;
+        }
+        let desc: *mut AnyObject = msg_send![screen, deviceDescription];
+        if desc.is_null() {
+            return 0;
+        }
+        let key = NSString::from_str("NSScreenNumber");
+        let number: *mut AnyObject = msg_send![desc, objectForKey: &*key];
+        if number.is_null() {
+            return 0;
+        }
+        msg_send![number, unsignedIntValue]
     }
 }
 

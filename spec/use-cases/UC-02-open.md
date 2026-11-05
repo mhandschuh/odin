@@ -56,3 +56,6 @@ which terminal it is.
 - **UC-02.13** Given a terminal of *vesta* in the pane, with Ghostty's usual keys, when Alice presses ⌘D, then a new terminal opens to its right in the same tab, starting in the folder the first one's shell is in, takes what she types, and is listed under *vesta*; ⌘⇧D opens one below instead; when one of them closes, the other takes the whole tab again.
 - **UC-02.14** Given a tab split into three terminals, then ⌘] and ⌘[ give the focus to the next and the previous one, and ⌘⌥ with an arrow to the nearest one on that side; clicking into a terminal gives it the focus, and the tree marks it.
 - **UC-02.15** Given a tab split in two, when Alice drags the divider between them, then they share the room as dragged; ⌘⌃= gives all of them the same room, and ⌘⇧↩ shows the one with the focus over the whole tab until pressed again.
+- **UC-02.16** Given terminals of *vesta* in the pane on the Mac's own display, when Alice moves Odin's window to a
+  second display with another resolution, then the terminals' text has the same size on it as in Ghostty's own window
+  there, sharp and filling the pane, within a second of the move, and the same again when she moves it back.

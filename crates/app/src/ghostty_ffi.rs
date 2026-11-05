@@ -175,6 +175,7 @@ unsafe extern "C" {
     pub fn ghostty_surface_set_focus(surface: Surface, focused: bool);
     pub fn ghostty_surface_set_occlusion(surface: Surface, visible: bool);
     pub fn ghostty_surface_set_size(surface: Surface, width: u32, height: u32);
+    pub fn ghostty_surface_set_display_id(surface: Surface, display: u32);
     pub fn ghostty_surface_key(surface: Surface, key: InputKey) -> bool;
     pub fn ghostty_surface_text(surface: Surface, text: *const c_char, len: usize);
     pub fn ghostty_surface_preedit(surface: Surface, text: *const c_char, len: usize);
