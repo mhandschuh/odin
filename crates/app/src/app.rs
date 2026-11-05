@@ -29,6 +29,8 @@ const EDGE: f32 = 6.0;
 const TITLE: f32 = 28.0;
 /// Room for the traffic lights at the top row's left.
 const LIGHTS: f32 = 70.0;
+/// Around each terminal while several show: room for the ember frame of the one with the keys.
+const FRAME: f32 = 2.0;
 
 enum Msg {
     Files,
@@ -262,6 +264,22 @@ impl App {
                 } else {
                     p.secondary
                 };
+                // A small meter before the numbers: filled as far as the limit is used.
+                let (bar, _) = ui.allocate_exact_size(vec2(34.0, 5.0), Sense::hover());
+                ui.painter().rect_filled(bar, CornerRadius::same(3), p.control);
+                let used = (m.percent / 100.0).clamp(0.0, 1.0);
+                if used > 0.0 {
+                    let fill = if old {
+                        p.tertiary
+                    } else if m.percent >= limits::WARN {
+                        WAITING
+                    } else {
+                        p.accent
+                    };
+                    let r = Rect::from_min_size(bar.min, vec2((bar.width() * used).max(3.0), bar.height()));
+                    ui.painter().rect_filled(r, CornerRadius::same(3), fill);
+                }
+                ui.add_space(-12.0);
                 let text = format!("{} {:.0}%{resets}", m.name, m.percent);
                 let r = ui.label(egui::RichText::new(text).size(11.5).color(color));
                 if let Some(at) = m.resets_at {
@@ -947,10 +965,68 @@ fn row(ui: &mut egui::Ui, depth: usize, id: egui::Id) -> (Rect, egui::Response) 
 }
 
 fn label(ui: &egui::Ui, rect: Rect, depth: usize, glyph: &str, glyph_color: Color32, text: &str, color: Color32) {
+    label_to(ui, rect, depth, glyph, glyph_color, text, color, rect.max.x - 8.0);
+}
+
+/// A row's glyph and text, the text ending in "…" before `end` (the row's right edge, or what sits there), as the
+/// sidebars of the Mac do; the whole text is in the row's tooltip where it's cut.
+#[allow(clippy::too_many_arguments)]
+fn label_to(
+    ui: &egui::Ui,
+    rect: Rect,
+    depth: usize,
+    glyph: &str,
+    glyph_color: Color32,
+    text: &str,
+    color: Color32,
+    end: f32,
+) -> bool {
     let p = ui.painter();
     let x = rect.min.x + 8.0 + depth as f32 * INDENT;
-    p.text(egui::pos2(x + 8.0, rect.center().y), Align2::CENTER_CENTER, glyph, theme::font(14.0), glyph_color);
-    p.text(egui::pos2(x + 22.0, rect.center().y), Align2::LEFT_CENTER, text, theme::font(13.0), color);
+    if !glyph.is_empty() {
+        p.text(egui::pos2(x + 8.0, rect.center().y), Align2::CENTER_CENTER, glyph, theme::font(14.0), glyph_color);
+    }
+    let g = fit(ui, text, theme::font(13.0), color, end - (x + 22.0));
+    let cut = g.elided;
+    p.galley(egui::pos2(x + 22.0, rect.center().y - g.size().y / 2.0), g, color);
+    cut
+}
+
+/// Text on one line within `width`, ending in "…" when it doesn't fit.
+fn fit(ui: &egui::Ui, text: &str, font: egui::FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::single_section(text.to_string(), egui::TextFormat::simple(font, color));
+    job.wrap = egui::text::TextWrapping {
+        max_width: width.max(8.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    ui.painter().layout_job(job)
+}
+
+/// A session's row: its dot, its name (cut with "…" where needed) and, at the right end, its state in its color, so
+/// the state stays readable however narrow the tree is (UC-03).
+#[allow(clippy::too_many_arguments)]
+fn status_row(ui: &egui::Ui, rect: Rect, depth: usize, name: &str, state: &str, color: Color32, strong: bool) -> bool {
+    let p = theme::current(ui.ctx());
+    let painter = ui.painter();
+    let x = rect.min.x + 8.0 + depth as f32 * INDENT;
+    painter.text(
+        egui::pos2(x + 8.0, rect.center().y),
+        Align2::CENTER_CENTER,
+        egui_phosphor::fill::CIRCLE,
+        theme::fill_font(9.0),
+        color,
+    );
+    let words = fit(ui, state, theme::font(11.5), if strong { color } else { p.tertiary }, 150.0);
+    let right = rect.max.x - 10.0;
+    let wx = right - words.size().x;
+    let cut_state = words.elided;
+    painter.galley(egui::pos2(wx, rect.center().y - words.size().y / 2.0), words, color);
+    let g = fit(ui, name, theme::font(13.0), p.text, wx - 10.0 - (x + 22.0));
+    let cut = g.elided || cut_state;
+    painter.galley(egui::pos2(x + 22.0, rect.center().y - g.size().y / 2.0), g, p.text);
+    cut
 }
 
 fn drop_line(ui: &egui::Ui, rect: Rect, depth: usize, top: bool) {
@@ -1101,13 +1177,20 @@ impl eframe::App for App {
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
                 ui.label(egui::RichText::new("Odin").strong().size(15.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(icon::GEAR).on_hover_text("Settings  ⌘,").clicked() {
+                    // Toolbar buttons, as on the Mac: only the glyph, a background where the pointer is.
+                    let tool = |g: &str| {
+                        egui::Button::new(egui::RichText::new(g).size(16.0).color(p.secondary))
+                            .frame_when_inactive(false)
+                            .min_size(vec2(28.0, 24.0))
+                    };
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    if ui.add(tool(icon::GEAR_SIX)).on_hover_text("Settings  ⌘,").clicked() {
                         self.settings_open = true;
                     }
-                    if ui.button(icon::FOLDER_PLUS).on_hover_text("New Group").clicked() {
+                    if ui.add(tool(icon::FOLDER_SIMPLE_PLUS)).on_hover_text("New Group").clicked() {
                         acts.push(Act::NewGroup);
                     }
-                    if ui.button(icon::PLUS).on_hover_text("Add Project…").clicked() {
+                    if ui.add(tool(icon::PLUS)).on_hover_text("Add Project…").clicked() {
                         acts.push(Act::AddProject);
                     }
                 });
@@ -1174,14 +1257,36 @@ impl eframe::App for App {
             self.pane = panes::Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
             let (shown, dividers) = self.terms.visible(self.pane, GAP);
             let to_egui = |r: panes::Rect| Rect::from_min_size(egui::pos2(r.x, r.y), vec2(r.w, r.h));
-            let shown: Vec<(u64, Rect)> = shown.into_iter().map(|(id, r)| (id, to_egui(r))).collect();
+            let mut shown: Vec<(u64, Rect)> = shown.into_iter().map(|(id, r)| (id, to_egui(r))).collect();
+            // Side by side, the terminal with the keys has a thin ember frame (in the room the views leave for it), so
+            // it's clear where typing goes, as Ghostty dims the others.
+            if shown.len() > 1 {
+                for (id, r) in shown.iter_mut() {
+                    *r = r.shrink(FRAME);
+                    if self.terms.shown() == Some(*id) {
+                        ui.painter().rect_stroke(
+                            r.expand(FRAME / 2.0),
+                            CornerRadius::same(3),
+                            Stroke::new(FRAME, p.accent.gamma_multiply(0.85)),
+                            egui::StrokeKind::Middle,
+                        );
+                    }
+                }
+            }
             terminal::layout(if dialog { &[] } else { &shown });
             // The dividers lie between the terminals' views, so egui gets the mouse there: dragged, they resize.
             for d in dividers {
                 let r = to_egui(d.rect);
                 let resp = ui.interact(r, egui::Id::new(("divider", &d.path)), Sense::drag());
                 let lit = resp.hovered() || resp.dragged();
-                ui.painter().rect_filled(r, 0.0, if lit { p.accent } else { p.sidebar });
+                // A hairline in the middle of the gap; the whole gap in ember while it's grabbed.
+                if lit {
+                    ui.painter().rect_filled(r, 0.0, p.accent);
+                } else if d.down {
+                    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0, p.separator));
+                } else {
+                    ui.painter().vline(r.center().x, r.y_range(), Stroke::new(1.0, p.separator));
+                }
                 if lit {
                     ctx.set_cursor_icon(if d.down {
                         egui::CursorIcon::ResizeVertical
@@ -1239,6 +1344,9 @@ impl App {
         acts: &mut Vec<Act>,
     ) {
         let p = theme::current(ui.ctx());
+        if depth == 0 && at.first().is_some_and(|i| *i > 0) {
+            ui.add_space(6.0);
+        }
         let (rect, resp) = row(ui, depth, egui::Id::new(("node", at)));
         let editing = self.renaming.as_ref().filter(|(r, _)| r == at).map(|(_, n)| n.clone());
         if let Some(mut text) = editing {
@@ -1256,8 +1364,22 @@ impl App {
                 self.renaming = Some((at.clone(), text));
             }
         } else {
+            // A group is a heading over its projects, as the Mac's sidebars show their sections: quieter than them.
             let arrow = if open { icon::CARET_DOWN } else { icon::CARET_RIGHT };
-            label(ui, rect, depth, arrow, p.secondary, name, p.text);
+            let count = if open { String::new() } else { count_projects(children).to_string() };
+            let end = if count.is_empty() {
+                rect.max.x - 8.0
+            } else {
+                let g = fit(ui, &count, theme::font(11.5), p.tertiary, 60.0);
+                let w = g.size().x;
+                ui.painter().galley(
+                    egui::pos2(rect.max.x - 10.0 - w, rect.center().y - g.size().y / 2.0),
+                    g,
+                    p.tertiary,
+                );
+                rect.max.x - 18.0 - w
+            };
+            label_to(ui, rect, depth, arrow, p.tertiary, name, p.secondary, end);
         }
         if resp.clicked() {
             acts.push(Act::Toggle(at.clone()));
@@ -1308,7 +1430,8 @@ impl App {
         let open = self.earlier_open.contains(path);
         let name = Node::project(path).label();
         let text = if missing { format!("{name}  (missing)") } else { name };
-        label(
+        let buttons = (resp.hovered() || ui.rect_contains_pointer(rect)) && !missing;
+        let cut = label_to(
             ui,
             rect,
             depth,
@@ -1316,7 +1439,9 @@ impl App {
             p.folder,
             &text,
             if missing { p.tertiary } else { p.text },
+            if buttons { rect.max.x - 4.0 - 3.0 * 26.0 } else { rect.max.x - 8.0 },
         );
+        let resp = if cut { resp.on_hover_text(path.display().to_string()) } else { resp };
         resp.dnd_set_drag_payload(at.clone());
         if let Some(from) = resp.dnd_hover_payload::<At>()
             && *from != *at
@@ -1331,7 +1456,7 @@ impl App {
             acts.push(Act::Earlier(path.to_path_buf()));
         }
         // Hovered: the three ways to open it, at its right end.
-        if (resp.hovered() || ui.rect_contains_pointer(rect)) && !missing {
+        if buttons {
             let mut x = rect.max.x - 4.0;
             for (glyph, tip, start) in [
                 (icon::CUBE, "Claude in a Sandbox", Start::Sandbox),
@@ -1429,9 +1554,11 @@ impl App {
             for e in list {
                 let (rect, resp) = row(ui, depth + 1, egui::Id::new(("earlier", &e.id)));
                 let name = e.name.clone().unwrap_or_else(|| short(&e.id));
-                let text = format!("{name}  ·  {}", history::ago(e.last, now));
-                label(ui, rect, depth + 1, icon::CLOCK_COUNTER_CLOCKWISE, p.tertiary, &text, p.secondary);
-                let resp = resp.on_hover_text("Resume");
+                let ago = fit(ui, &history::ago(e.last, now), theme::font(11.5), p.tertiary, 90.0);
+                let wx = rect.max.x - 10.0 - ago.size().x;
+                ui.painter().galley(egui::pos2(wx, rect.center().y - ago.size().y / 2.0), ago, p.tertiary);
+                label_to(ui, rect, depth + 1, icon::CLOCK_COUNTER_CLOCKWISE, p.tertiary, &name, p.secondary, wx - 10.0);
+                let resp = resp.on_hover_text(format!("Resume “{name}”"));
                 if resp.clicked() {
                     acts.push(Act::Open(path.to_path_buf(), Start::Resume(e.id.clone())));
                 }
@@ -1465,22 +1592,16 @@ impl App {
             State::Idle => p.tertiary,
         };
         let what = state_words(s.state, s.wait);
-        let place = if s.sandbox.is_empty() { String::new() } else { "  ·  sandbox".into() };
-        let text = format!("{}  ·  {what}{place}", self.session_name(s));
-        label(ui, rect, depth, "", color, &text, p.text);
-        let x = rect.min.x + 16.0 + depth as f32 * INDENT;
-        ui.painter().text(
-            egui::pos2(x, rect.center().y),
-            Align2::CENTER_CENTER,
-            egui_phosphor::fill::CIRCLE,
-            theme::fill_font(10.0),
-            color,
-        );
+        let place = if s.sandbox.is_empty() { "" } else { " · sandbox" };
+        let name = self.session_name(s);
+        let words = format!("{}{place}", state_word(s.state, s.wait));
+        let cut = status_row(ui, rect, depth, &name, &words, color, s.state != State::Idle);
         if s.state == State::Working {
             ui.ctx().request_repaint_after(Duration::from_secs(1));
         }
         let tip = if term.is_some() { "Show its terminal" } else { "Bring its terminal to the front" };
-        let resp = resp.on_hover_text(tip);
+        let _ = cut;
+        let resp = resp.on_hover_text(format!("{name}: {what}{place}\n{tip}"));
         if resp.clicked() {
             acts.push(Act::Focus(s.id.clone()));
         }
@@ -1507,7 +1628,8 @@ impl App {
         highlight(ui, rect, &self.terms, id);
         let t = self.terms.get(id);
         let claude = t.and_then(|t| t.claude);
-        let sandbox = if t.is_some_and(|t| t.sbx) { "  ·  sandbox" } else { "" };
+        let mut tip = "Show its terminal".to_string();
+        let sandbox = if t.is_some_and(|t| t.sbx) { " · sandbox" } else { "" };
         if let Some((state, wait)) = claude {
             // Claude's state from the terminal itself (UC-03.10).
             let color = match state {
@@ -1516,21 +1638,15 @@ impl App {
                 State::Idle => p.tertiary,
             };
             let name = t.and_then(|t| title::topic(&t.title)).unwrap_or_else(|| "Claude".into());
-            let text = format!("{name}  ·  {}{sandbox}", state_words(state, wait));
-            label(ui, rect, depth, "", color, &text, p.text);
-            ui.painter().text(
-                egui::pos2(rect.min.x + 16.0 + depth as f32 * INDENT, rect.center().y),
-                Align2::CENTER_CENTER,
-                egui_phosphor::fill::CIRCLE,
-                theme::fill_font(10.0),
-                color,
-            );
+            let what = format!("{}{sandbox}", state_word(state, wait));
+            status_row(ui, rect, depth, &name, &what, color, state != State::Idle);
+            tip = format!("{name}: {}{sandbox}\nShow its terminal", state_words(state, wait));
         } else {
             // The shell's own title: its folder, or the program running in it.
             let name = t.map(|t| t.title.trim()).filter(|n| !n.is_empty()).unwrap_or("Terminal").to_string();
             label(ui, rect, depth, icon::TERMINAL_WINDOW, p.secondary, &name, p.text);
         }
-        let resp = resp.on_hover_text("Show its terminal");
+        let resp = resp.on_hover_text(tip);
         if resp.clicked() {
             acts.push(Act::Show(id));
         }
@@ -1693,9 +1809,9 @@ impl App {
 fn highlight(ui: &egui::Ui, rect: Rect, terms: &Terms, id: u64) {
     let p = theme::current(ui.ctx());
     if terms.shown() == Some(id) {
-        ui.painter().rect_filled(rect, CornerRadius::same(6), p.control);
+        ui.painter().rect_filled(rect, CornerRadius::same(6), p.accent.gamma_multiply(0.22));
     } else if terms.is_visible(id) {
-        ui.painter().rect_filled(rect, CornerRadius::same(6), p.hover);
+        ui.painter().rect_filled(rect, CornerRadius::same(6), p.accent.gamma_multiply(0.09));
     }
 }
 
@@ -1721,12 +1837,29 @@ fn clock(at: u64, now: u64, long: bool) -> String {
     }
 }
 
+/// The state in a word (UC-03.2: working, waiting, idle), for the row's right end; what it waits for is in its tooltip.
+fn state_word(state: State, wait: Option<Wait>) -> &'static str {
+    let _ = wait;
+    state.word()
+}
+
 fn state_words(state: State, wait: Option<Wait>) -> &'static str {
     match (state, wait) {
         (State::Waiting, Some(Wait::Permission)) => "waiting for a permission",
         (State::Waiting, _) => "waiting for you",
         (st, _) => st.word(),
     }
+}
+
+/// The projects in a group and its groups, shown beside a closed group.
+fn count_projects(nodes: &[Node]) -> usize {
+    nodes
+        .iter()
+        .map(|n| match n {
+            Node::Group { children, .. } => count_projects(children),
+            Node::Project { .. } => 1,
+        })
+        .sum()
 }
 
 fn short(id: &str) -> String {

@@ -7,6 +7,12 @@ release notes and gives it the version and date.
 
 - **Fixed: tiny text on another display.** Moved to a display with another resolution, the terminals kept drawing for
   the first one, so their text became very small; now they follow the display they're on, as in Ghostty's own window.
+- **A calmer, clearer tree:** long names end in "…" instead of running into the edge, with the whole name in the
+  tooltip; a session's state sits at the right in its color (working, waiting, idle), so it stays readable however
+  narrow the tree is; groups read as headings, and a closed group shows how many projects are in it; the terminal
+  shown is marked in ember. The buttons at the top are plain icons, and the limits at the bottom have small meters.
+- **Which terminal has the keys:** with a tab split, the terminal you type into has a thin ember frame, and the
+  dividers between them are fine lines that turn ember when grabbed.
 - Renamed: Yggdrasil is now **Odin**, who sees all the worlds from his throne and whose ravens come back with news of
   everything (as the app does with projects and their agents). A new icon, Odin's two ravens circling the world. Settings, hooks and data stay
   where they were.
