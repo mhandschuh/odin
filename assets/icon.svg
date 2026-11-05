@@ -1,16 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Odin's eye: he sees all nine worlds from his throne (the app sees all projects and their sessions). -->
+  <!-- Odin's ravens, Huginn and Muninn, flying out over the world and back with what they saw (the app's agents). -->
   <rect x="64" y="64" width="896" height="896" rx="200" fill="#26262a"/>
-  <g transform="translate(0 44)">
-  <g fill="none" stroke="#f0904a" stroke-linecap="round" stroke-linejoin="round">
-    <!-- the eye's outline -->
-    <path d="M196 512 C 300 348, 400 300, 512 300 C 624 300, 724 348, 828 512 C 724 676, 624 724, 512 724 C 400 724, 300 676, 196 512 Z" stroke-width="44"/>
-    <!-- lashes above, like rays -->
-    <path d="M512 220 V170 M370 248 L346 204 M654 248 L678 204 M248 312 L212 278 M776 312 L812 278" stroke-width="30"/>
-  </g>
-  <!-- the iris and the pupil -->
-  <circle cx="512" cy="512" r="128" fill="#f0904a"/>
-  <circle cx="512" cy="512" r="52" fill="#26262a"/>
-  <circle cx="548" cy="474" r="18" fill="#f0904a"/>
-  </g>
+  <!-- the world they fly over, and their path around it -->
+  <circle cx="512" cy="512" r="96" fill="#f0904a"/>
+  <circle cx="512" cy="512" r="250" fill="none" stroke="#f0904a" stroke-width="18" stroke-dasharray="6 46" stroke-linecap="round" opacity="0.7"/>
+  <!-- a raven: body, head, beak, raised wings, fanned tail -->
+  <defs><g id="raven" fill="#f0904a">
+    <path d="M0,0 C-30,-40 -110,-70 -170,-50 C-120,-30 -80,-10 -60,10 C-110,10 -160,30 -190,70 C-120,60 -60,45 -20,30 C10,45 50,48 80,36 L120,30 L86,14 C70,-10 40,-14 0,0 Z"/>
+    <circle cx="78" cy="22" r="7" fill="#26262a"/>
+  </g></defs>
+  <use href="#raven" transform="translate(470 248) rotate(18) scale(1.15)"/>
+  <use href="#raven" transform="translate(560 778) rotate(198) scale(1.15)"/>
 </svg>
