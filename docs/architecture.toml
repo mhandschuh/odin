@@ -1,0 +1,144 @@
+# The C4 model of the app (levels 1 to 3: context, containers, components) for the handbook's arc42 pages
+# (../tools/handbook.py). People, outside systems, what runs where, the parts of the code and who talks to whom.
+# Ids are short names used only in this file; a relation to a component also counts for its container.
+
+[system]
+name = "Odin"
+description = "Projects with their live Claude Code sessions and agents, in one window with Ghostty's terminals"
+
+[[people]]
+id = "person"
+name = "Person"
+description = "Works on many projects with Claude at once"
+
+[[external]]
+id = "claude"
+name = "Claude Code"
+description = "Runs the sessions; reports each step to the hook and its limits to the status line"
+tech = "hooks, status line, transcripts"
+
+[[external]]
+id = "ghostty"
+name = "Ghostty"
+description = "Draws the terminals in the pane, and has its own window"
+tech = "libghostty 1.4, AppleScript"
+
+[[external]]
+id = "sbx"
+name = "Sandboxes"
+description = "Claude running in a sandbox, reporting into the project"
+tech = "sbx"
+
+[[external]]
+id = "anthropic"
+name = "Anthropic usage endpoint"
+description = "The week's limit per model, only when turned on"
+tech = "api.anthropic.com, HTTPS"
+
+[[containers]]
+id = "app"
+name = "Odin app"
+tech = "Rust, egui, objc2, libghostty"
+description = "The tree of projects and sessions, and the terminal pane"
+
+[[containers]]
+id = "hook"
+name = "Hook and status line"
+tech = "shell scripts in Claude's settings"
+description = "Write one line per step and the limits to files, never content"
+
+[[containers]]
+id = "files"
+name = "Event and limit files"
+tech = "JSONL and JSON in Application Support"
+description = "Steps of every session, the limits, the tree and settings"
+
+[[components]]
+container = "app"
+id = "ui"
+name = "Window"
+tech = "crates/app: app, theme"
+description = "The tree, the header, the limits bar, settings"
+
+[[components]]
+container = "app"
+id = "terminal"
+name = "Terminal pane"
+tech = "crates/app: terminal, ghostty_ffi"
+description = "An NSView per terminal that Ghostty draws into; keys, mouse, scale"
+
+[[components]]
+container = "app"
+id = "core"
+name = "Session logic"
+tech = "crates/core"
+description = "Events to sessions and states, the tree, panes and splits, history, limits, sbx"
+
+[[components]]
+container = "app"
+id = "usage"
+name = "Usage"
+tech = "crates/app: usage"
+description = "The one network request, every 5 minutes when on"
+
+[[relations]]
+from = "person"
+to = "ui"
+label = "opens projects, follows sessions"
+
+[[relations]]
+from = "person"
+to = "terminal"
+label = "types into"
+
+[[relations]]
+from = "ui"
+to = "core"
+label = "uses"
+
+[[relations]]
+from = "ui"
+to = "terminal"
+label = "lays out"
+
+[[relations]]
+from = "terminal"
+to = "ghostty"
+label = "draws with"
+tech = "C API"
+
+[[relations]]
+from = "claude"
+to = "hook"
+label = "reports steps and limits to"
+
+[[relations]]
+from = "hook"
+to = "files"
+label = "appends to"
+
+[[relations]]
+from = "core"
+to = "files"
+label = "watches and reads"
+
+[[relations]]
+from = "sbx"
+to = "files"
+label = "reports into the project"
+
+[[relations]]
+from = "ui"
+to = "sbx"
+label = "asks for running sandboxes"
+
+[[relations]]
+from = "usage"
+to = "anthropic"
+label = "asks for limits"
+tech = "HTTPS"
+
+[[deployment]]
+node = "The person's Mac"
+runs = "Odin.app; the hook and status line in Claude's settings"
+how = "./x run on the Mac for now; later a Homebrew cask (odin)"
