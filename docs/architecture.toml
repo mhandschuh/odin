@@ -40,6 +40,7 @@ id = "app"
 name = "Odin app"
 tech = "Rust, egui, objc2, libghostty"
 description = "The tree of projects and sessions, and the terminal pane"
+level3 = true
 
 [[containers]]
 id = "hook"
