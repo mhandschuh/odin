@@ -32,6 +32,10 @@ fn main() -> eframe::Result {
         .with_app_id("yggdrasil")
         .with_inner_size([1200.0, 760.0])
         .with_min_inner_size([640.0, 400.0]);
+    // Odin's icon in the Dock: without it eframe shows its own default icon over the bundle's.
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icon.png")) {
+        viewport = viewport.with_icon(icon);
+    }
     if cfg!(target_os = "macos") {
         viewport = viewport.with_titlebar_shown(false).with_title_shown(false).with_fullsize_content_view(true);
     }

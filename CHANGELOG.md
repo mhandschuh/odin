@@ -5,6 +5,8 @@ release notes and gives it the version and date.
 
 ## Unreleased
 
+- A new icon in the Pantheon's Mocha style (the ravens around a blue world), and the Dock shows it instead of a
+  default icon.
 - Switches, selected rows and focus rings in the standard windows take Catppuccin Blue (the app's accent), not ember.
 - The Catppuccin Mocha look with the Blue accent (Latte in light mode).
 - **Fixed: tiny text on another display.** Moved to a display with another resolution, the terminals kept drawing for
