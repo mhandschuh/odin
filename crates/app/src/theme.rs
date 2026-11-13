@@ -31,47 +31,48 @@ pub struct Palette {
 
 pub fn palette(dark: bool) -> Palette {
     if dark {
+        // Catppuccin Mocha with the Blue accent (the user's choice of 2026-11-12; the other apps keep ember for now).
         Palette {
             dark,
-            window: Color32::from_rgb(38, 38, 40),
-            sidebar: Color32::from_rgb(41, 41, 43),
-            content: Color32::from_rgb(30, 30, 31),
-            stripe: Color32::from_rgb(36, 36, 38),
-            toolbar: Color32::from_rgb(44, 44, 46),
-            separator: Color32::from_rgb(58, 58, 60),
-            text: Color32::from_rgb(229, 229, 231),
-            secondary: Color32::from_rgb(152, 152, 157),
-            tertiary: Color32::from_rgb(99, 99, 102),
-            // Ember, the Pantheon apps' accent (Vesta's on Android), in place of macOS blue.
-            accent: Color32::from_rgb(240, 144, 74),
-            selection: Color32::from_rgb(178, 92, 36),
-            selection_inactive: Color32::from_rgb(70, 70, 73),
-            selection_text: Color32::WHITE,
+            window: Color32::from_rgb(17, 17, 27),
+            sidebar: Color32::from_rgb(24, 24, 37),
+            content: Color32::from_rgb(30, 30, 46),
+            stripe: Color32::from_rgb(36, 36, 52),
+            toolbar: Color32::from_rgb(24, 24, 37),
+            separator: Color32::from_rgb(49, 50, 68),
+            text: Color32::from_rgb(205, 214, 244),
+            secondary: Color32::from_rgb(166, 173, 200),
+            tertiary: Color32::from_rgb(108, 112, 134),
+            accent: Color32::from_rgb(137, 180, 250),
+            selection: Color32::from_rgb(80, 95, 132),
+            selection_inactive: Color32::from_rgb(69, 71, 90),
+            selection_text: Color32::from_rgb(205, 214, 244),
             hover: Color32::from_white_alpha(14),
-            control: Color32::from_rgb(58, 58, 61),
-            folder: Color32::from_rgb(88, 166, 236),
-            danger: Color32::from_rgb(255, 105, 97),
+            control: Color32::from_rgb(69, 71, 90),
+            folder: Color32::from_rgb(116, 199, 236),
+            danger: Color32::from_rgb(243, 139, 168),
         }
     } else {
+        // Catppuccin Latte, Mocha's light flavor, with its Blue.
         Palette {
             dark,
-            window: Color32::from_rgb(246, 246, 246),
-            sidebar: Color32::from_rgb(234, 234, 236),
-            content: Color32::WHITE,
-            stripe: Color32::from_rgb(245, 245, 247),
-            toolbar: Color32::from_rgb(250, 250, 250),
-            separator: Color32::from_rgb(222, 222, 224),
-            text: Color32::from_rgb(29, 29, 31),
-            secondary: Color32::from_rgb(110, 110, 115),
-            tertiary: Color32::from_rgb(174, 174, 178),
-            accent: Color32::from_rgb(214, 108, 36),
-            selection: Color32::from_rgb(196, 98, 30),
-            selection_inactive: Color32::from_rgb(220, 220, 224),
+            window: Color32::from_rgb(220, 224, 232),
+            sidebar: Color32::from_rgb(230, 233, 239),
+            content: Color32::from_rgb(239, 241, 245),
+            stripe: Color32::from_rgb(233, 236, 241),
+            toolbar: Color32::from_rgb(230, 233, 239),
+            separator: Color32::from_rgb(204, 208, 218),
+            text: Color32::from_rgb(76, 79, 105),
+            secondary: Color32::from_rgb(108, 111, 133),
+            tertiary: Color32::from_rgb(156, 160, 176),
+            accent: Color32::from_rgb(30, 102, 245),
+            selection: Color32::from_rgb(30, 102, 245),
+            selection_inactive: Color32::from_rgb(204, 208, 218),
             selection_text: Color32::WHITE,
             hover: Color32::from_black_alpha(12),
-            control: Color32::from_rgb(227, 227, 229),
-            folder: Color32::from_rgb(78, 160, 236),
-            danger: Color32::from_rgb(215, 50, 40),
+            control: Color32::from_rgb(220, 224, 232),
+            folder: Color32::from_rgb(32, 159, 181),
+            danger: Color32::from_rgb(210, 15, 57),
         }
     }
 }
@@ -100,7 +101,7 @@ pub fn install(ctx: &egui::Context) {
             let p = palette(theme == Theme::Dark);
             let mut v = if p.dark { Visuals::dark() } else { Visuals::light() };
             v.panel_fill = p.content;
-            v.window_fill = if p.dark { Color32::from_rgb(44, 44, 46) } else { Color32::from_rgb(252, 252, 252) };
+            v.window_fill = if p.dark { Color32::from_rgb(49, 50, 68) } else { Color32::from_rgb(239, 241, 245) };
             v.window_stroke = Stroke::new(1.0, p.separator);
             v.window_corner_radius = CornerRadius::same(12);
             v.window_shadow.blur = 30;

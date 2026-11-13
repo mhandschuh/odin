@@ -29,7 +29,7 @@ const EDGE: f32 = 6.0;
 const TITLE: f32 = 28.0;
 /// Room for the traffic lights at the top row's left.
 const LIGHTS: f32 = 70.0;
-/// Around each terminal while several show: room for the ember frame of the one with the keys.
+/// Around each terminal while several show: room for the accent frame of the one with the keys.
 const FRAME: f32 = 2.0;
 
 enum Msg {
@@ -1258,7 +1258,7 @@ impl eframe::App for App {
             let (shown, dividers) = self.terms.visible(self.pane, GAP);
             let to_egui = |r: panes::Rect| Rect::from_min_size(egui::pos2(r.x, r.y), vec2(r.w, r.h));
             let mut shown: Vec<(u64, Rect)> = shown.into_iter().map(|(id, r)| (id, to_egui(r))).collect();
-            // Side by side, the terminal with the keys has a thin ember frame (in the room the views leave for it), so
+            // Side by side, the terminal with the keys has a thin accent frame (in the room the views leave for it), so
             // it's clear where typing goes, as Ghostty dims the others.
             if shown.len() > 1 {
                 for (id, r) in shown.iter_mut() {
@@ -1279,7 +1279,7 @@ impl eframe::App for App {
                 let r = to_egui(d.rect);
                 let resp = ui.interact(r, egui::Id::new(("divider", &d.path)), Sense::drag());
                 let lit = resp.hovered() || resp.dragged();
-                // A hairline in the middle of the gap; the whole gap in ember while it's grabbed.
+                // A hairline in the middle of the gap; the whole gap in the accent while it's grabbed.
                 if lit {
                     ui.painter().rect_filled(r, 0.0, p.accent);
                 } else if d.down {
