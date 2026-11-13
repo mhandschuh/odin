@@ -187,7 +187,7 @@ Every criterion without a test, and those test-plan.md says need a hand check to
 
 ## 🟥 NFR-05 Look
 
-- 🟥 **NFR-05.1** Given the app on the Mac, then its window uses dark surfaces with the ember accent, and its settings open in a settings window with ⌘,.
+- 🟥 **NFR-05.1** Given the app on the Mac, then its window uses Catppuccin Mocha (Latte in light mode) with the Blue accent, and its settings open in a settings window with ⌘,.
 - 🟥 **NFR-05.2** Given the window on the Mac, then *Odin* and its three buttons sit in the window's top row, to the right of the traffic lights and centered with them; dragging that row's empty part moves the window, and double-clicking it zooms the window.
 
 ## 🟥 NFR-06 Interface language
